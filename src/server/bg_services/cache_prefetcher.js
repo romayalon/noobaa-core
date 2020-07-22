@@ -57,7 +57,7 @@ class CachePrefetcher {
                 Prefix: bucket.prefix
             }).promise();
 
-            const objs_arr = objs.Contents
+            const objs_arr = objs.Contents;
             dbg.log0(`list of prefixed objects in namespace bucket: ${bucket_name}, ${objs_arr}`);
 
             // copy all objects from data lake (read resource) to the write resource
@@ -94,7 +94,8 @@ class CachePrefetcher {
         // return buckets that are namespace buckets and have caching and prefix and not fetched yet
         return system_store.data.buckets
             .filter(bucket =>
-                _.isUndefined(bucket.deleting) && bucket.namespace && bucket.namespace.caching && bucket.namespace.caching.fetched === false &&
+                _.isUndefined(bucket.deleting) && bucket.namespace &&
+                bucket.namespace.caching && bucket.namespace.caching.fetched === false &&
                 bucket.namespace.caching.prefix).map(bucket => ({
                 name: bucket.name,
                 _id: MDStore.instance().make_md_id(bucket._id),
