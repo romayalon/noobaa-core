@@ -19,10 +19,9 @@ const AzureDefaultConnection = {
     secret: AZURE_STORAGE_ACCOUNT_KEY
 };
 
-const blobService = azure_storage.createBlobService(
-    AzureDefaultConnection.identity,
-    AzureDefaultConnection.secret,
-    AzureDefaultConnection.endpoint
+const blobService = new azure_storage.BlobServiceClient(
+    AzureDefaultConnection.endpoint,
+    new azure_storage.StorageSharedKeyCredential(AzureDefaultConnection.identity, AzureDefaultConnection.secret)
 );
 
 async function uploadRandomFileDirectlyToAzure(container, file_name, size, err_handler) {
@@ -47,10 +46,12 @@ async function getPropertyBlob(container, file_name, err_handler) {
     const message = `Getting md5 for ${file_name} directly from azure container: ${container}`;
     console.log(message);
     try {
-        const blobProperties = await P.fromCallback(callback => blobService.getBlobProperties(container, file_name, callback));
+        const container_client = blobService.getContainerClient(container);
+        const blob_client = container_client.getBlobClient(file_name).getBlockBlobClient();
+        const blobProperties = await blob_client.getProperties();
         console.log(JSON.stringify(blobProperties));
         return {
-            md5: blobProperties.contentSettings.contentMD5,
+            md5: blobProperties.contentMD5,
             size: blobProperties.contentLength
         };
     } catch (err) {

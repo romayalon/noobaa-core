@@ -194,7 +194,7 @@ class BlockStoreClient {
                 const azure_params = bs_info.connection_params;
                 const block_id = block_md.id;
                 const block_dir = get_block_internal_dir(block_id);
-                const blob = azure_storage.createBlobService(azure_params.connection_string);
+                const blob = azure_storage.BlobServiceClient.fromConnectionString(azure_params.connection_string);
                 const container = bs_info.target_bucket;
                 const block_key = `${bs_info.blocks_path}/${block_dir}/${block_id}`;
                 const encoded_md = Buffer.from(JSON.stringify(block_md)).toString('base64');
@@ -241,13 +241,18 @@ class BlockStoreClient {
                 const azure_params = bs_info.connection_params;
                 const block_id = block_md.id;
                 const block_dir = get_block_internal_dir(block_id);
-                const blob = azure_storage.createBlobService(azure_params.connection_string);
+                const blob = azure_storage.BlobServiceClient.fromConnectionString(azure_params.connection_string);
                 const container = bs_info.target_bucket;
                 const block_key = `${bs_info.blocks_path}/${block_dir}/${block_id}`;
-                const info = await P.fromCallback(callback => blob.getBlobToStream(container, block_key, writable, {
-                        disableContentMD5Validation: true
-                    },
-                    callback));
+                const container_client = blob.getContainerClient(container);
+                const blob_client = container_client.getBlobClient(block_key);
+                // TODO: handles issues:
+                // writeable is not a buffer
+                // disablecontentMD5validation is not a parameter
+                // metadata is not in the response
+                const info = await blob_client.downloadToBuffer(writable, 0, undefined, {
+                    disableContentMD5Validation: true
+                });
                 const noobaablockmd = info.metadata.noobaablockmd || info.metadata.noobaa_block_md;
                 const store_block_md = JSON.parse(Buffer.from(noobaablockmd, 'base64').toString());
                 this._update_usage_stats(rpc_client, { size: params.block_md.size, count: 1 }, options.address, 'READ');

@@ -1,7 +1,7 @@
 /* Copyright (C) 2016 NooBaa */
 'use strict';
 
-const azure_storage = require('azure-storage');
+const azure_storage = require('@azure/storage-blob');
 const fs = require('fs');
 
 const P = require('../../util/promise');
@@ -11,7 +11,7 @@ dotenv.load();
 const CONTAINER = 'vitaly-servers-logs';
 
 async function main() {
-    const blob = azure_storage.createBlobService(process.env.AZURE_STORAGE_CONNECTION_STRING);
+    const blob = azure_storage.BlobServiceClient.fromConnectionString(process.env.AZURE_STORAGE_CONNECTION_STRING);
     const noobaa_log_files = (await fs.promises.readdir('/log'))
         .filter(f => f.startsWith('noobaa'))
         .map(filename => '/log/' + filename);

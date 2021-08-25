@@ -1103,7 +1103,7 @@ function get_cloud_buckets(req) {
                 req.rpc_params.connection
             );
             if (connection.endpoint_type === 'AZURE') {
-                let blob_svc = azure_storage.createBlobService(cloud_utils.get_azure_connection_string(connection));
+                let blob_svc = azure_storage.BlobServiceClient.fromConnectionString(cloud_utils.get_azure_connection_string(connection));
                 let used_cloud_buckets = cloud_utils.get_used_cloud_targets(['AZURE'],
                     system_store.data.buckets, system_store.data.pools, system_store.data.namespace_resources);
                 return P.timeout(EXTERNAL_BUCKET_LIST_TO, P.fromCallback(callback => {

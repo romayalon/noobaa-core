@@ -132,7 +132,7 @@ class NamespaceMonitor {
                 access_key: access_key,
                 secret_key: secret_key
             });
-            conn = azure_storage.createBlobService(conn_string);
+            conn = azure_storage.BlobServiceClient.fromConnectionString(conn_string);
             if (conn) this.nsr_connections_obj[nsr._id] = conn;
         }
         const { target_bucket } = nsr.connection;

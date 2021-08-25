@@ -8,10 +8,11 @@ const buffer_utils = require('../../util/buffer_utils');
 const dotenv = require('../../util/dotenv');
 dotenv.load();
 
-const azure_storage = require('azure-storage');
+const azure_storage = require('@azure/storage-blob');
 
-const blob_service = azure_storage.createBlobService('account', '1234', 'http://localhost:80');
-// const blob_service = azure_storage.createBlobService();
+
+const blob_service = new azure_storage.BlobServiceClient('http://localhost:80',
+    new azure_storage.StorageSharedKeyCredential('account', '1234'));
 
 
 const TEST_CTX = {

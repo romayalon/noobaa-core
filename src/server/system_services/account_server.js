@@ -1027,12 +1027,12 @@ async function _check_azure_connection_internal(params) {
         });
     }
 
-    /** @type {BlobService} */
+    /** @type {azure_storage.BlobServiceClient} */
     let blob;
     try {
-        blob = azure_storage.createBlobService(conn_str);
+        blob = azure_storage.BlobServiceClient.fromConnectionString(conn_str);
     } catch (err) {
-        dbg.warn(`got error on createBlobService with params`, _.omit(params, 'secret'), ` error: ${err}`);
+        dbg.warn(`got error on create Blob Service with params`, _.omit(params, 'secret'), ` error: ${err}`);
         throw err_to_status(err, err instanceof SyntaxError ? 'INVALID_CREDENTIALS' : 'UNKNOWN_FAILURE');
     }
 

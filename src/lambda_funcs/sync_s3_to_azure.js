@@ -25,7 +25,7 @@ module.exports.handler = (event, context, callback) => {
     var max_keys = event.max_keys || 10;
 
     var s3 = new AWS.S3();
-    var blob = azure_storage.createBlobService(
+    var blob = azure_storage.BlobServiceClient.fromConnectionString(
         `DefaultEndpointsProtocol=https;` +
         `AccountName=${azure_account_name};` +
         `AccountKey=${azure_account_key}`);

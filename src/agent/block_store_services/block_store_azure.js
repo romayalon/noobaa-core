@@ -20,8 +20,13 @@ class BlockStoreAzure extends BlockStoreBase {
         this.blocks_path = this.base_path + '/blocks_tree';
         this.usage_path = this.base_path + '/usage';
         this.usage_md_key = 'noobaa_usage';
-        this.blob = azure_storage.createBlobService(this.cloud_info.azure.connection_string);
+        this.blob = azure_storage.BlobServiceClient.fromConnectionString(this.cloud_info.azure.connection_string);
         this.container_name = this.cloud_info.azure.container;
+        this.container_client = this.blob.getContainerClient(this.container_name);
+    }
+
+    _get_blob_client(blob_name) {
+        return this.container_client.getBlobClient(blob_name).getBlockBlobClient();
     }
 
     init() {
@@ -38,22 +43,6 @@ class BlockStoreAzure extends BlockStoreBase {
         };
     }
 
-    _get_shared_access_signature(block_key, permission) {
-        // set start and expiry dates to -10 minutes till 10 minutes from now
-        const start_date = new Date();
-        const expiry_date = new Date(start_date);
-        expiry_date.setMinutes(start_date.getMinutes() + 10);
-        start_date.setMinutes(start_date.getMinutes() - 10);
-        const shared_access_policy = {
-            AccessPolicy: {
-                Permissions: permission,
-                Start: start_date,
-                Expiry: expiry_date
-            },
-        };
-        return this.blob.generateSharedAccessSignature(this.container_name, block_key, shared_access_policy);
-    }
-
     _get_block_store_info() {
         const connection_params = {
             connection_string: this.cloud_info.azure.connection_string,
@@ -65,42 +54,41 @@ class BlockStoreAzure extends BlockStoreBase {
         };
     }
 
+    // PROBLEMS: 
+    // 1. writeable stream is not a buffer
+    // 2. metadata seems to not exist
+    // 3. disablecotentMD5 doesn't exist in options
     _read_block(block_md) {
         const block_key = this._block_key(block_md.id);
+        const blob_client = this._get_blob_client(block_key);
         const writable = buffer_utils.write_stream();
-        return P.fromCallback(callback => this.blob.getBlobToStream(
-                this.container_name,
-                block_key,
-                writable, {
-                    disableContentMD5Validation: true
-                },
-                callback
-            ))
-            .then(info => ({
-                data: buffer_utils.join(writable.buffers, writable.total_length),
-                block_md: this._decode_block_md(info.metadata.noobaablockmd || info.metadata.noobaa_block_md)
-            }))
-            .catch(err => {
-                dbg.error('BlockStoreAzure _read_block failed:',
-                    this.container_name, block_key, err);
-                if (err.code === 'ContainerNotFound') {
-                    throw new RpcError('STORAGE_NOT_EXIST', `azure container ${this.container_name} not found. got error ${err}`);
-                } else if (err.code === 'AuthenticationFailed') {
-                    throw new RpcError('AUTH_FAILED', `access denied to the azure container ${this.container_name}. got error ${err}`);
-                }
-                throw err;
-            });
+        blob_client.downloadToBuffer(
+            writable,
+            0,
+            undefined, {
+                disableContentMD5Validation: true
+            }).then(info => ({
+            data: buffer_utils.join(writable.buffers, writable.total_length),
+            block_md: this._decode_block_md(info.metadata.noobaablockmd || info.metadata.noobaa_block_md)
+        })).catch(err => {
+            dbg.error('BlockStoreAzure _read_block failed:',
+                this.container_name, block_key, err);
+            if (err.code === 'ContainerNotFound') {
+                throw new RpcError('STORAGE_NOT_EXIST', `azure container ${this.container_name} not found. got error ${err}`);
+            } else if (err.code === 'AuthenticationFailed') {
+                throw new RpcError('AUTH_FAILED', `access denied to the azure container ${this.container_name}. got error ${err}`);
+            }
+            throw err;
+        });
     }
 
 
+
     async _read_block_md(block_md) {
-        const block_info = await P.fromCallback(callback => this.blob.getBlobProperties(
-            this.container_name,
-            this._block_key(block_md.id),
-            callback
-        ));
+        const blob_client = this._get_blob_client(this._block_key(block_md.id));
+        const block_info = await blob_client.getProperties();
         const store_block_md = this._decode_block_md(block_info.metadata.noobaablockmd || block_info.metadata.noobaa_block_md);
-        const store_md5 = block_info.contentSettings.contentMD5;
+        const store_md5 = block_info.contentMD5;
         return {
             block_md: store_block_md,
             store_md5
@@ -195,12 +183,8 @@ class BlockStoreAzure extends BlockStoreBase {
         return P.map_with_concurrency(10, block_ids, block_id => {
                 const block_key = this._block_key(block_id);
                 let info;
-                return P.fromCallback(callback =>
-                        this.blob.getBlobProperties(
-                            this.container_name,
-                            block_key,
-                            callback)
-                    )
+                const blob_client = this._get_blob_client(block_key);
+                return blob_client.getProperties()
                     .then(info_arg => {
                         info = info_arg;
                     })
@@ -287,12 +271,8 @@ class BlockStoreAzure extends BlockStoreBase {
     }
 
     _read_usage() {
-        return P.fromCallback(callback =>
-                this.blob.getBlobProperties(
-                    this.container_name,
-                    this.usage_path,
-                    callback)
-            )
+        const blob_client = this._get_blob_client(this.usage_path);
+        return blob_client.getProperties()
             .then(info => {
                 const usage_data = info.metadata[this.usage_md_key];
                 if (usage_data) {

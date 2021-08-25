@@ -30,9 +30,14 @@ class NamespaceBlob {
         this.namespace_resource_id = namespace_resource_id;
         this.connection_string = connection_string;
         this.container = container;
-        this.blob = azure_storage.createBlobService(connection_string);
+        this.blob = azure_storage.BlobServiceClient.fromConnectionString(connection_string);
         this.rpc_client = rpc_client;
         this.account_name = account_name;
+        this.container_client = this.blob.getContainerClient(this.container);
+    }
+
+    _get_blob_client(blob_name) {
+        return this.container_client.getBlobClient(blob_name).getBlockBlobClient();
     }
 
     is_server_side_copy(other, params) {
@@ -122,12 +127,8 @@ class NamespaceBlob {
                 this.container,
                 inspect(params)
             );
-            const obj = await P.fromCallback(callback =>
-                this.blob.getBlobProperties(
-                    this.container,
-                    params.key,
-                    callback)
-            );
+            const blob_client = this._get_blob_client(params.key);
+            const obj = await blob_client.getProperties();
             dbg.log0('NamespaceBlob.read_object_md:',
                 this.container,
                 inspect(params),
@@ -222,6 +223,7 @@ class NamespaceBlob {
             );
         });
     }
+
 
     ///////////////////
     // OBJECT UPLOAD //
