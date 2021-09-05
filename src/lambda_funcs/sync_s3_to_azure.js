@@ -15,7 +15,7 @@
 */
 
 var AWS = require('aws-sdk');
-var azure_storage = require('azure-storage');
+const azure_storage = require('../util/azure_storage_wrap');
 
 module.exports.handler = (event, context, callback) => {
     var s3_bucket = event.s3.bucket;
@@ -58,16 +58,15 @@ module.exports.handler = (event, context, callback) => {
     }
 
     function sync_object(item) {
+        const container_client = blob.getContainerClient(azure_container);
+        const blob_client = container_client.getBlobClient(item.Key).getBlockBlobClient();
         return make_promise(
-            cb => blob.createBlockBlobFromStream(
-                azure_container,
-                item.Key,
+            blob_client.uploadStream(
                 s3.getObject({
                     Bucket: s3_bucket,
                     Key: item.Key,
                 }).createReadStream(),
-                item.Size,
-                cb)
+                item.Size)
         );
     }
 

@@ -23,12 +23,15 @@ const TEST_CTX = {
 
 
 async function upload_blocks({ blocks, container, blob }) {
-    await P.all(blocks.map(block => P.fromCallback(callback => blob_service.createBlockFromText(
-        block.block_id,
-        container,
-        blob,
-        block.buffer,
-        callback))));
+    const container_client = blob_service.getContainerClient(container);
+    await P.all(blocks.map(block => {
+        const blob_client = container_client.getBlobClient(blob).getBlockBlobClient();
+
+        return blob_client.stageBlock(
+            block.block_id,
+            block.buffer,
+        )
+    }));
 }
 
 async function commit_block_list({ block_list, list_type = 'UncommittedBlocks', container, blob } = {}) {

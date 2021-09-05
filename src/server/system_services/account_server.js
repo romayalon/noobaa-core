@@ -1037,9 +1037,9 @@ async function _check_azure_connection_internal(params) {
     }
 
     try {
-        await P.fromCallback(callback => blob.listContainersSegmented(null, callback));
+        blob.listContainers().byPage({ maxPageSize: 100 });
     } catch (err) {
-        dbg.warn(`got error on listContainersSegmented with params`, _.omit(params, 'secret'), ` error: ${err}`);
+        dbg.warn(`got error on listContainers with params`, _.omit(params, 'secret'), ` error: ${err}`);
         if (err.code === 'AuthenticationFailed' &&
             err.authenticationerrordetail && err.authenticationerrordetail.indexOf('Request date header too old') > -1) {
             throw err_to_status(err, 'TIME_SKEW');
@@ -1049,13 +1049,13 @@ async function _check_azure_connection_internal(params) {
 
     let service_properties;
     try {
-        service_properties = await P.fromCallback(callback => blob.getServiceProperties(callback));
+        service_properties = await blob.getProperties();
     } catch (err) {
         dbg.warn(`got error on getServiceProperties with params`, _.omit(params, 'secret'), ` error: ${err}`);
         throw err_to_status(err, 'NOT_SUPPORTED');
     }
 
-    if (!service_properties.Logging) {
+    if (!service_properties.blobAnalyticsLogging) {
         dbg.warn(`Error - connection for Premium account with params`, _.omit(params, 'secret'));
         throw err_to_status({}, 'NOT_SUPPORTED');
     }

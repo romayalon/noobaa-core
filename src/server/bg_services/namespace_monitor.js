@@ -139,12 +139,8 @@ class NamespaceMonitor {
         const block_key = `test-delete-non-existing-key-${Date.now()}`;
 
         try {
-            await P.fromCallback(callback =>
-                conn.deleteBlob(
-                    target_bucket,
-                    block_key,
-                    callback)
-            );
+            const container_client = conn.getContainerClient(target_bucket);
+            await container_client.deleteBlob(block_key);
         } catch (err) {
             dbg.log1('test_blob_resource: got error:', err);
             if (err.code !== 'BlobNotFound') throw err;

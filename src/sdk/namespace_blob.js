@@ -601,9 +601,7 @@ class NamespaceBlob {
     async delete_object(params, object_sdk) {
         dbg.log0('NamespaceBlob.delete_object:', this.container, inspect(params));
 
-        const res = await P.fromCallback(
-            callback => this.blob.deleteBlob(this.container, params.key, callback)
-        );
+        const res = await this.container_client.deleteBlob(params.key);
 
         dbg.log0('NamespaceBlob.delete_object:',
             this.container,
@@ -617,9 +615,8 @@ class NamespaceBlob {
     async delete_multiple_objects(params, object_sdk) {
         dbg.log0('NamespaceBlob.delete_multiple_objects:', this.container, inspect(params));
 
-        const res = await P.map_with_concurrency(10, params.objects, obj => P.fromCallback(
-                callback => this.blob.deleteBlob(this.container, obj.key, callback)
-            )
+        const res = await P.map_with_concurrency(10, params.objects, obj =>
+            this.container_client.deleteBlob(this.container, obj.key)
             .then(() => ({}))
             .catch(err => ({ err_code: 'InternalError', err_message: err.message || 'InternalError' })));
 

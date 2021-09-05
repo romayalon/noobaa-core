@@ -4,7 +4,6 @@
 
 const P = require('../../util/promise');
 const dbg = require('../../util/debug_module')(__filename);
-const buffer_utils = require('../../util/buffer_utils');
 const size_utils = require('../../util/size_utils');
 const azure_storage = require('../../util/azure_storage_wrap');
 const BlockStoreBase = require('./block_store_base').BlockStoreBase;
@@ -55,21 +54,16 @@ class BlockStoreAzure extends BlockStoreBase {
     }
 
     // PROBLEMS: 
-    // 1. writeable stream is not a buffer
-    // 2. metadata seems to not exist
-    // 3. disablecotentMD5 doesn't exist in options
+    // 1. we might want to convert the readable stream to buffer
+    // 3. disableContentMD5Validation: true doesn't exist in options
     _read_block(block_md) {
         const block_key = this._block_key(block_md.id);
         const blob_client = this._get_blob_client(block_key);
-        const writable = buffer_utils.write_stream();
-        blob_client.downloadToBuffer(
-            writable,
+        return blob_client.download(
             0,
-            undefined, {
-                disableContentMD5Validation: true
-            }).then(info => ({
-            data: buffer_utils.join(writable.buffers, writable.total_length),
-            block_md: this._decode_block_md(info.metadata.noobaablockmd || info.metadata.noobaa_block_md)
+            undefined).then(response => ({
+            data: response.readableStreamBody,
+            block_md: this._decode_block_md(response.metadata.noobaablockmd || response.metadata.noobaa_block_md)
         })).catch(err => {
             dbg.error('BlockStoreAzure _read_block failed:',
                 this.container_name, block_key, err);
@@ -99,16 +93,13 @@ class BlockStoreAzure extends BlockStoreBase {
         const encoded_md = this._encode_block_md(block_md);
         const block_key = this._block_key(block_md.id);
         // check to see if the object already exists
-
-        return P.fromCallback(callback => this.blob.createBlockBlobFromText(
-                this.container_name,
-                block_key,
-                data, {
+        const blob_client = this._get_blob_client(block_key);
+        return blob_client.upload(
+                data, data.length, {
                     metadata: {
                         noobaablockmd: encoded_md
                     }
-                },
-                callback))
+                })
             .then(() => {
                 if (options && options.ignore_usage) return;
                 // return usage count for the object
@@ -139,20 +130,15 @@ class BlockStoreAzure extends BlockStoreBase {
             dbg.log0(`cleaning up all objects with prefix ${this.base_path}`);
             while (!done) {
                 const prev_continuation_token = continuation_token;
-                const list_res = await P.fromCallback(callback => this.blob.listBlobsSegmentedWithPrefix(
-                    this.container_name,
-                    this.base_path,
-                    prev_continuation_token,
-                    callback));
-                if (list_res.entries.length !== 0) {
-                    await P.map_with_concurrency(10, list_res.entries, async entry => {
+                let iterator = this.container_client.listBlobsFlat({
+                    prefix: this.base_path
+                }).byPage({ continuationToken: prev_continuation_token, maxPageSize: 1000 });
+                let list_res = (await iterator.next()).value;
+
+                if (list_res.segment.blobItems.length !== 0) {
+                    await P.map_with_concurrency(10, list_res.segment.blobItems, async entry => {
                         try {
-                            await P.fromCallback(callback =>
-                                this.blob.deleteBlob(
-                                    this.container_name,
-                                    entry.name,
-                                    callback)
-                            );
+                            await this.container_client.deleteBlob(entry.name);
                         } catch (err) {
                             dbg.warn('BlockStoreAzure _delete_blocks failed for block',
                                 this.container_name, entry.name, err);
@@ -160,10 +146,10 @@ class BlockStoreAzure extends BlockStoreBase {
                     });
                 }
 
-                total += list_res.entries.length;
+                total += list_res.segment.blobItems.length;
                 continuation_token = list_res.continuationToken;
 
-                if (!continuation_token || list_res.entries.length === 0) {
+                if (!continuation_token || list_res.segment.blobItems.length === 0) {
                     done = true;
                 }
             }
@@ -180,34 +166,27 @@ class BlockStoreAzure extends BlockStoreBase {
             count: 0
         };
         let failed_to_delete_block_ids = [];
-        return P.map_with_concurrency(10, block_ids, block_id => {
+        return P.map_with_concurrency(10, block_ids, async block_id => {
                 const block_key = this._block_key(block_id);
                 let info;
-                const blob_client = this._get_blob_client(block_key);
-                return blob_client.getProperties()
-                    .then(info_arg => {
-                        info = info_arg;
-                    })
-                    .then(() => P.fromCallback(callback =>
-                        this.blob.deleteBlob(
-                            this.container_name,
-                            block_key,
-                            callback)
-                    ))
-                    .then(() => {
-                        const data_size = Number(info.contentLength);
-                        const noobaablockmd = info.metadata.noobaablockmd || info.metadata.noobaa_block_md;
-                        const md_size = (noobaablockmd && noobaablockmd.length) || 0;
-                        deleted_storage.size -= (data_size + md_size);
-                        deleted_storage.count -= 1;
-                    })
-                    .catch(err => {
-                        if (err.code !== 'BlobNotFound') {
-                            failed_to_delete_block_ids.push(block_id);
-                        }
-                        dbg.warn('BlockStoreAzure _delete_blocks failed for block',
-                            this.container_name, block_key, err);
-                    });
+                try {
+                    const blob_client = this._get_blob_client(block_key);
+                    const info_arg = await blob_client.getProperties();
+                    info = info_arg;
+                    await this.container_client.deleteBlob(block_key);
+                    const data_size = Number(info.contentLength);
+                    const noobaablockmd = info.metadata.noobaablockmd || info.metadata.noobaa_block_md;
+                    const md_size = (noobaablockmd && noobaablockmd.length) || 0;
+                    deleted_storage.size -= (data_size + md_size);
+                    deleted_storage.count -= 1;
+
+                } catch (err) {
+                    if (err.code !== 'BlobNotFound') {
+                        failed_to_delete_block_ids.push(block_id);
+                    }
+                    dbg.warn('BlockStoreAzure _delete_blocks failed for block',
+                        this.container_name, block_key, err);
+                }
             })
             .then(() => this._update_usage(deleted_storage))
             .then(() => ({
@@ -219,12 +198,7 @@ class BlockStoreAzure extends BlockStoreBase {
     async test_store_validity() {
         const block_key = this._block_key(`test-delete-non-existing-key-${Date.now()}`);
         try {
-            await P.fromCallback(callback =>
-                this.blob.deleteBlob(
-                    this.container_name,
-                    block_key,
-                    callback)
-            );
+            await this.container_client.deleteBlob(block_key);
         } catch (err) {
             if (err.code !== 'BlobNotFound') {
                 dbg.error('in _test_cloud_service - deleteBlob failed:', err, _.omit(this.cloud_info, 'access_keys'));
@@ -295,16 +269,13 @@ class BlockStoreAzure extends BlockStoreBase {
         const metadata = {
             [this.usage_md_key]: this._encode_block_md(this._usage)
         };
+        const blob_client = this._get_blob_client(this.usage_path);
 
-        return P.fromCallback(callback =>
-            this.blob.createBlockBlobFromText(
-                this.container_name,
-                this.usage_path,
-                '', // no data, only metadata is used on the usage object
-                {
-                    metadata: metadata
-                },
-                callback)
+        return blob_client.upload(
+            '', // no data, only metadata is used on the usage object
+            0, {
+                metadata: metadata
+            }
         );
     }
 

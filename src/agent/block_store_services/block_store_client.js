@@ -198,15 +198,15 @@ class BlockStoreClient {
                 const container = bs_info.target_bucket;
                 const block_key = `${bs_info.blocks_path}/${block_dir}/${block_id}`;
                 const encoded_md = Buffer.from(JSON.stringify(block_md)).toString('base64');
-                await P.fromCallback(callback => blob.createBlockBlobFromText(
-                    container,
-                    block_key,
-                    data, {
+                const container_client = blob.getContainerClient(container);
+                const blob_client = container_client.getBlobClient(block_key).getBlockBlobClient();
+
+                await blob_client.upload(
+                    data, data.length, {
                         metadata: {
                             noobaablockmd: encoded_md
                         }
-                    },
-                    callback));
+                    });
                 const data_length = data.length;
                 const usage = data_length ? {
                     size: (block_md.is_preallocated ? 0 : data_length) + encoded_md.length,
@@ -230,7 +230,6 @@ class BlockStoreClient {
 
     async _delegate_read_block_azure(rpc_client, params, options) {
         const { timeout = config.IO_READ_BLOCK_TIMEOUT } = options;
-        const writable = buffer_utils.write_stream();
         const { block_md } = params;
         let bs_info;
         // get signed access signature from the agent
@@ -247,17 +246,14 @@ class BlockStoreClient {
                 const container_client = blob.getContainerClient(container);
                 const blob_client = container_client.getBlobClient(block_key);
                 // TODO: handles issues:
-                // writeable is not a buffer
+                // we might want to convertreadableStreamBody to buffer
                 // disablecontentMD5validation is not a parameter
-                // metadata is not in the response
-                const info = await blob_client.downloadToBuffer(writable, 0, undefined, {
-                    disableContentMD5Validation: true
-                });
+                const info = await blob_client.download(0, undefined);
                 const noobaablockmd = info.metadata.noobaablockmd || info.metadata.noobaa_block_md;
                 const store_block_md = JSON.parse(Buffer.from(noobaablockmd, 'base64').toString());
                 this._update_usage_stats(rpc_client, { size: params.block_md.size, count: 1 }, options.address, 'READ');
                 return {
-                    [RPC_BUFFERS]: { data: buffer_utils.join(writable.buffers, writable.total_length) },
+                    [RPC_BUFFERS]: { data: info.readableStreamBody },
                     block_md: store_block_md,
                 };
             } catch (err) {
