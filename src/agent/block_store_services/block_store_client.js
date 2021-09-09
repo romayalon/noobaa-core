@@ -198,8 +198,8 @@ class BlockStoreClient {
                 const container = bs_info.target_bucket;
                 const block_key = `${bs_info.blocks_path}/${block_dir}/${block_id}`;
                 const encoded_md = Buffer.from(JSON.stringify(block_md)).toString('base64');
-                const container_client = blob.getContainerClient(container);
-                const blob_client = container_client.getBlobClient(block_key).getBlockBlobClient();
+                const container_client = azure_storage.get_container_client(blob, container);
+                const blob_client = azure_storage.get_blob_client(container_client, block_key);
 
                 await blob_client.upload(
                     data, data.length, {
@@ -243,8 +243,8 @@ class BlockStoreClient {
                 const blob = azure_storage.BlobServiceClient.fromConnectionString(azure_params.connection_string);
                 const container = bs_info.target_bucket;
                 const block_key = `${bs_info.blocks_path}/${block_dir}/${block_id}`;
-                const container_client = blob.getContainerClient(container);
-                const blob_client = container_client.getBlobClient(block_key);
+                const container_client = azure_storage.get_container_client(blob, container);
+                const blob_client = azure_storage.get_blob_client(container_client, block_key);
                 // TODO: handles issues:
                 // we might want to convertreadableStreamBody to buffer
                 // disablecontentMD5validation is not a parameter

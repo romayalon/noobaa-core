@@ -4,12 +4,12 @@
 const P = require('../../util/promise');
 const crypto = require('crypto');
 
-const buffer_utils = require('../../util/buffer_utils');
 const dotenv = require('../../util/dotenv');
 dotenv.load();
 
 const azure_storage = require('@azure/storage-blob');
 
+const old_blob_service = azure_storage.get_old_blob_service_creds('account', '1234', 'http://localhost:80');
 
 const blob_service = new azure_storage.BlobServiceClient('http://localhost:80',
     new azure_storage.StorageSharedKeyCredential('account', '1234'));
@@ -30,24 +30,25 @@ async function upload_blocks({ blocks, container, blob }) {
         return blob_client.stageBlock(
             block.block_id,
             block.buffer,
-        )
+            block.block_size
+        );
     }));
 }
 
-async function commit_block_list({ block_list, list_type = 'UncommittedBlocks', container, blob } = {}) {
-    const blocks_to_commit = {};
-    blocks_to_commit[list_type] = block_list;
-    await P.fromCallback(callback => blob_service.commitBlocks(container, blob, blocks_to_commit, callback));
+async function commit_block_list({ block_list, container, blob } = {}) {
+    const container_client = blob_service.getContainerClient(container);
+    const blob_client = container_client.getBlobClient(blob).getBlockBlobClient();
+    await blob_client.commitBlockList(block_list);
 }
 
 function generate_random_blocks({ block_count, block_size }) {
     // const = params;
-    const block_id_prefix = blob_service.generateBlockIdPrefix();
+    const block_id_prefix = azure_storage.generate_block_id_prefix(old_blob_service);
     const blocks = [];
     for (let i = 0; i < block_count; ++i) {
         const buf = crypto.randomBytes(block_size);
-        const block_id = blob_service.getBlockId(block_id_prefix, i);
-        blocks.push({ block_id, buffer: buf });
+        const block_id = azure_storage.get_block_id(old_blob_service, block_id_prefix, i);
+        blocks.push({ block_id, buffer: buf, block_size });
     }
     return blocks;
 }
@@ -97,8 +98,7 @@ async function test_upload_blocks_and_recommit_reverse_order() {
         await commit_block_list({
             block_list: blocks.map(block => block.block_id),
             blob,
-            container,
-            list_type: 'CommittedBlocks'
+            container
         });
         await compare_md5(blocks, container, blob);
         console.log('PASSED - test_upload_blocks_and_recommit_reverse_order');
@@ -127,8 +127,7 @@ async function test_upload_blocks_and_modify_single_block() {
         await commit_block_list({
             block_list: blocks.map(block => block.block_id),
             blob,
-            container,
-            list_type: 'LatestBlocks'
+            container
         });
         await compare_md5(blocks, container, blob);
         console.log('PASSED - test_upload_blocks_and_modify_single_block');
@@ -142,7 +141,9 @@ async function test_upload_blocks_and_modify_single_block() {
 async function compare_md5(blocks, container, blob) {
     const md5 = calc_block_list_md5(blocks);
     // download blob and compare md5
-    const dl_buf = await buffer_utils.read_stream_join(blob_service.createReadStream(container, blob));
+    const container_client = blob_service.getContainerClient(container);
+    const blob_client = container_client.getBlobClient(blob).getBlockBlobClient();
+    const dl_buf = await blob_client.downloadToBuffer();
     const dl_md5 = crypto.createHash('md5').update(dl_buf).digest('hex');
     if (dl_md5 !== md5) {
         throw new Error(`md5 does not match. blocks md5 (${md5}) downloaded md5 (${dl_md5})`);
@@ -151,7 +152,7 @@ async function compare_md5(blocks, container, blob) {
 
 async function setup() {
     console.log('creating test container', TEST_CTX.container);
-    await P.fromCallback(callback => blob_service.createContainer(TEST_CTX.container, callback));
+    await blob_service.createContainer(TEST_CTX.container);
 }
 
 

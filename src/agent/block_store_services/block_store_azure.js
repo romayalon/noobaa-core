@@ -21,11 +21,7 @@ class BlockStoreAzure extends BlockStoreBase {
         this.usage_md_key = 'noobaa_usage';
         this.blob = azure_storage.BlobServiceClient.fromConnectionString(this.cloud_info.azure.connection_string);
         this.container_name = this.cloud_info.azure.container;
-        this.container_client = this.blob.getContainerClient(this.container_name);
-    }
-
-    _get_blob_client(blob_name) {
-        return this.container_client.getBlobClient(blob_name).getBlockBlobClient();
+        this.container_client = azure_storage.get_container_client(this.blob, this.container_name);
     }
 
     init() {
@@ -58,7 +54,7 @@ class BlockStoreAzure extends BlockStoreBase {
     // 3. disableContentMD5Validation: true doesn't exist in options
     _read_block(block_md) {
         const block_key = this._block_key(block_md.id);
-        const blob_client = this._get_blob_client(block_key);
+        const blob_client = azure_storage.get_blob_client(this.container_client, block_key);
         return blob_client.download(
             0,
             undefined).then(response => ({
@@ -79,7 +75,7 @@ class BlockStoreAzure extends BlockStoreBase {
 
 
     async _read_block_md(block_md) {
-        const blob_client = this._get_blob_client(this._block_key(block_md.id));
+        const blob_client = azure_storage.get_blob_client(this.container_client, this._block_key(block_md.id));
         const block_info = await blob_client.getProperties();
         const store_block_md = this._decode_block_md(block_info.metadata.noobaablockmd || block_info.metadata.noobaa_block_md);
         const store_md5 = block_info.contentMD5;
@@ -93,7 +89,7 @@ class BlockStoreAzure extends BlockStoreBase {
         const encoded_md = this._encode_block_md(block_md);
         const block_key = this._block_key(block_md.id);
         // check to see if the object already exists
-        const blob_client = this._get_blob_client(block_key);
+        const blob_client = azure_storage.get_blob_client(this.container_client, block_key);
         return blob_client.upload(
                 data, data.length, {
                     metadata: {
@@ -170,7 +166,7 @@ class BlockStoreAzure extends BlockStoreBase {
                 const block_key = this._block_key(block_id);
                 let info;
                 try {
-                    const blob_client = this._get_blob_client(block_key);
+                    const blob_client = azure_storage.get_blob_client(this.container_client, block_key);
                     const info_arg = await blob_client.getProperties();
                     info = info_arg;
                     await this.container_client.deleteBlob(block_key);
@@ -245,7 +241,7 @@ class BlockStoreAzure extends BlockStoreBase {
     }
 
     _read_usage() {
-        const blob_client = this._get_blob_client(this.usage_path);
+        const blob_client = azure_storage.get_blob_client(this.container_client, this.usage_path);
         return blob_client.getProperties()
             .then(info => {
                 const usage_data = info.metadata[this.usage_md_key];
@@ -269,7 +265,7 @@ class BlockStoreAzure extends BlockStoreBase {
         const metadata = {
             [this.usage_md_key]: this._encode_block_md(this._usage)
         };
-        const blob_client = this._get_blob_client(this.usage_path);
+        const blob_client = azure_storage.get_blob_client(this.container_client, this.usage_path);
 
         return blob_client.upload(
             '', // no data, only metadata is used on the usage object

@@ -58,8 +58,8 @@ module.exports.handler = (event, context, callback) => {
     }
 
     function sync_object(item) {
-        const container_client = blob.getContainerClient(azure_container);
-        const blob_client = container_client.getBlobClient(item.Key).getBlockBlobClient();
+        const container_client = azure_storage.get_container_client(blob, azure_container);
+        const blob_client = azure_storage.get_blob_client(container_client, item.Key);
         return make_promise(
             blob_client.uploadStream(
                 s3.getObject({
