@@ -57,8 +57,10 @@ function get_azure_connection_string(params) {
     connection_string += 'AccountName=' + params.access_key.unwrap() + ';';
     connection_string += 'AccountKey=' + params.secret_key.unwrap() + ';';
 
-    const AZURE_BLOB_ENDPOINT = 'blob.core.windows.net';
-    if (endpoint_url.host !== AZURE_BLOB_ENDPOINT) {
+    const AZURE_BLOB_ENDPOINT = 'core.windows.net';
+    if (endpoint_url.host === 'blob.' + AZURE_BLOB_ENDPOINT) {
+        connection_string += 'EndpointSuffix=' + AZURE_BLOB_ENDPOINT + ';';
+    } else {
         connection_string += 'BlobEndpoint=' + params.endpoint + ';';
     }
     return connection_string;

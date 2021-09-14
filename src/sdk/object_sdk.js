@@ -324,7 +324,8 @@ class ObjectSDK {
                 container: ns_info.target_bucket,
                 connection_string: cloud_utils.get_azure_connection_string(ns_info),
                 // Azure storage account name is stored as the access key.
-                account_name: ns_info.access_key.unwrap()
+                account_name: ns_info.access_key.unwrap(),
+                account_key: ns_info.secret_key.unwrap()
             });
         }
         if (ns_info.fs_root_path) {

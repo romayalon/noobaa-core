@@ -34,7 +34,6 @@ azure_storage.calc_body_md5 = async stream_file => {
         new_stream.once('finish', resolve);
     });
     const final_md5 = md5_stream.md5.digest('hex');
-
     const md5_buf = Buffer.from(final_md5, 'hex');
     return { new_stream, md5_buf };
 };
@@ -42,13 +41,18 @@ azure_storage.calc_body_md5 = async stream_file => {
 // create old lib blob service - needed for functions that do not exist in the new lib
 // needed only for generateBlockIdPrefix() and get_block_id() functions
 azure_storage.get_old_blob_service_conn_string = conn_string => {
-    old_azure_storage.createBlobService(conn_string);
+    const sliced_conn_string = conn_string.slice(0, conn_string.indexOf('EndpointSuffix'));
+    console.log('get_old_blob_service_conn_string: ', sliced_conn_string);
+    return old_azure_storage.createBlobService(sliced_conn_string);
 };
 azure_storage.get_old_blob_service_creds = (account, pass, endpoint) => {
-    old_azure_storage.createBlobService(account, pass, endpoint);
+    console.log('get_old_blob_service_creds: ', account, pass, endpoint);
+    return old_azure_storage.createBlobService(account, pass, endpoint);
+
 };
 // these 2 functions are using the old blob service since there is no matching functions in the new lib
 azure_storage.generate_block_id_prefix = old_blob_service => old_blob_service.generateBlockIdPrefix();
 azure_storage.get_block_id = (old_blob_service, block_id_prefix, part_num) => old_blob_service.getBlockId(block_id_prefix, part_num);
 
+azure_storage.CONCURRENCY_NUM = 20;
 module.exports = azure_storage;

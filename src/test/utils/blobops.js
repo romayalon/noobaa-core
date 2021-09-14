@@ -27,7 +27,7 @@ async function uploadRandomFileDirectlyToAzure(container, file_name, size, err_h
     const message = `Uploading random file ${file_name} to azure container ${container}`;
     console.log(message);
     const streamFile = new RandStream(size, {
-        highWaterMark: 1024 * 1024,
+        highWaterMark: size,
     });
 
 
@@ -41,7 +41,7 @@ async function uploadRandomFileDirectlyToAzure(container, file_name, size, err_h
         const container_client = blobService.getContainerClient(container);
         const block_blob_client = container_client.getBlockBlobClient(file_name);
         const { new_stream, md5_buf } = await azure_storage.calc_body_md5(streamFile);
-        await block_blob_client.uploadStream(new_stream, size, undefined, {
+        await block_blob_client.uploadStream(new_stream, size, azure_storage.CONCURRENCY_NUM, {
             blobHTTPHeaders: {
                 blobContentMD5: md5_buf
             }
