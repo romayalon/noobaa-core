@@ -14,12 +14,6 @@ const stats_collector = require('./endpoint_stats_collector');
 const s3_utils = require('../endpoint/s3/s3_utils');
 const schema_utils = require('../util/schema_utils');
 
-// const MAP_BLOCK_LIST_TYPE = Object.freeze({
-//     uncommitted: 'UncommittedBlocks',
-//     latest: 'LatestBlocks',
-//     committed: 'CommittedBlocks'
-// });
-
 
 /**
  * @implements {nb.Namespace}
@@ -187,17 +181,17 @@ class NamespaceBlob {
             count_stream.on('readable', on_readable);
             const blob_client = this._get_blob_client(params.key);
 
-            blob_client.downloadToBuffer(
-                count_stream,
+            blob_client.download(
                 params.start,
-                params.end - params.start
+                params.end - params.start,
             ).then(res => {
                 dbg.log0('NamespaceBlob.read_object_stream:',
                     this.container,
                     inspect(_.omit(params, 'object_md.ns')),
-                    'callback res', inspect(res), count_stream
+                    'callback res', inspect(res)
                 );
-                return resolve(count_stream);
+                if (!res.readableStreamBody) throw new Error('NamespaceBlob.read_object_stream: download response is invalid');
+                return resolve(res.readableStreamBody.pipe(count_stream));
             }).catch(err => {
                     this._translate_error_code(err);
                     dbg.warn('NamespaceBlob.read_object_stream:',
@@ -615,7 +609,6 @@ class NamespaceBlob {
      * @returns {nb.ObjectInfo}
      */
     _get_blob_object_info(obj, bucket) {
-        dbg.log0('_get_blob_object_info: ', obj, obj.properties, bucket);
         // list objects returns properties
         // head object returns flat
         const flat_obj = obj.properties || obj;
