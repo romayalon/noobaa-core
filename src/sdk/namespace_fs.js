@@ -893,24 +893,59 @@ class NamespaceFS {
     //    2.1 create .versions/ if it doesnt exist
     //    2.2 move old version (existing latest) to .versions/
     // 3. move new version to dest (key path)
-    async _move_to_dest_ver_enabled(fs_context, source_path, dest_path, { key }) {
+    async _move_to_dest_ver_enabled(fs_context, source_path, dest_path, target_file, { key }) {
 
         const cur_ver_info = await this._get_version_info(fs_context, dest_path);
         if (cur_ver_info) {
             const versioned_path = this._get_version_path(key, cur_ver_info.version_id_str);
             await this._make_path_dirs(versioned_path, fs_context);
-            await this.safe_move_posix(fs_context, dest_path, versioned_path, cur_ver_info);
+            if (this._is_gpfs()) {
+                await this.safe_move_gpfs(fs_context, dest_path, undefined, versioned_path, cur_ver_info);
+            } else {
+                await this.safe_move_posix(fs_context, dest_path, versioned_path, cur_ver_info);
+            }
         } else {
             dbg.log1('NamespaceFS._move_to_dest_ver_enabled old version doesnt exist - creating first version of object');
         }
 
         const new_ver_info = await this._get_version_info(fs_context, source_path);
         if (!new_ver_info) throw new Error('NamespaceFS._move_to_dest_ver_enabled - upload file doesnt exist');
-        await this.safe_move_posix(fs_context, source_path, dest_path, new_ver_info);
+        if (this._is_gpfs()) {
+            await this.safe_move_gpfs(fs_context, source_path, target_file, dest_path, new_ver_info);
+        } else {
+            await this.safe_move_posix(fs_context, source_path, dest_path, new_ver_info);
+        }
     }
 
-    async _move_to_dest_ver_enabled_gpfs() {
-        throw new Error('TODO');
+    async safe_move_gpfs(fs_context, from_path, from_file, to_path, { mtimeNsBigint, ino }) {
+        let should_close_file = false;
+        try {
+        // retry safe linking a file in case of parallel put/delete of the source path
+        if (!from_file) {
+            should_close_file = true;
+            from_file = await this._open_file(fs_context, from_path, 'wt');
+        }
+        await this._wrap_safe_op_with_retries(
+            from_file.linkfileat(fs_context, to_path),
+            { fs_context, from_path, to_path, mtimeNsBigint, ino },
+            config.NSFS_RENAME_RETRIES,
+            'FS::SafeLink ERROR link target doesn\'t match expected inode and mtime'
+        );
+
+        const upload_id = uuidv4();
+        const upload_path = path.join(this.bucket_path, this.get_bucket_tmpdir(), 'versions', upload_id);
+        await this._make_path_dirs(upload_path, fs_context);
+
+        // retry safe unlinking a file in case of parallel put/delete of the source path
+        await this._wrap_safe_op_with_retries(
+            nb_native().fs.unlinkat,
+            { fs_context, from_path, mtimeNsBigint, ino },
+            config.NSFS_RENAME_RETRIES,
+            'FS::SafeUnlink ERROR unlink target doesn\'t match expected inode and mtime'
+        );
+        } finally {
+            if (should_close_file) await this.complete_object_upload_finally(undefined, undefined, from_file, fs_context);
+        }
     }
 
     async _move_to_dest_ver_suspended() {
@@ -935,11 +970,11 @@ class NamespaceFS {
                         await nb_native().fs.rename(fs_context, source_path, dest_path);
                     }
                 } else if (this._is_versioning_enabled()) {
-                    if (open_mode === 'wt') {
-                        await this._move_to_dest_ver_enabled_gpfs();
-                    } else {
-                        await this._move_to_dest_ver_enabled(fs_context, source_path, dest_path, versioning_options);
-                    }
+                    // if (open_mode === 'wt') {
+                    //     await this._move_to_dest_ver_enabled_gpfs();
+                    // } else {
+                    await this._move_to_dest_ver_enabled(fs_context, source_path, dest_path, target_file, versioning_options);
+                    //}
                 } else if (open_mode === 'wt') {
                         await this._move_to_dest_ver_suspended_gpfs();
                 } else {
