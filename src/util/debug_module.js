@@ -15,12 +15,20 @@
  */
 module.exports = DebugLogger;
 
+//Register a "console" module DebugLogger for the console wrapper
+// DO NOT move, this line should be first so other log messages called on require will be wrapped
+const console_wrapper = require('./console_wrapper');
+const conlogger = new DebugLogger("CONSOLE.js");
+console_wrapper.register_logger(conlogger);
+
 const _ = require('lodash');
 const fs = require('fs');
 const path = require('path');
 const util = require('util');
 const os = require('os');
 const debug_config = require('./debug_config');
+
+
 const config = require('../../config.js');
 
 const nb_native = require('./nb_native');
@@ -52,33 +60,21 @@ util.inspect.defaultOptions.breakLength = Infinity;
 //Detect our context, node/atom/browser
 //Different context requires different handling, for example rotating file steam usage or console wrapping
 let syslog;
-let console_wrapper;
-if (typeof process !== 'undefined' &&
-    process.versions &&
-    process.versions['atom-shell']) { //atom shell
-    console_wrapper = require('./console_wrapper');
-} else if (global.document) {
-    //browser
-} else {
-    // node
-
-    // check if we run on md_server <=> /etc/rsyslog.d/noobaa_syslog.conf exists
-    let should_log_to_syslog = true;
-    try {
-        const file = fs.statSync('/etc/rsyslog.d/noobaa_syslog.conf');
-        if (!file.isFile()) {
-            should_log_to_syslog = false;
-        }
-    } catch (err) {
+// check if we run on md_server <=> /etc/rsyslog.d/noobaa_syslog.conf exists
+let should_log_to_syslog = true;
+try {
+    const file = fs.statSync('/etc/rsyslog.d/noobaa_syslog.conf');
+    if (!file.isFile()) {
         should_log_to_syslog = false;
     }
-
-    if (should_log_to_syslog) {
-        syslog = nb_native().syslog;
-    }
-
-    console_wrapper = require('./console_wrapper');
+} catch (err) {
+    should_log_to_syslog = false;
 }
+
+if (should_log_to_syslog) {
+    syslog = nb_native().syslog;
+}
+
 
 
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -412,7 +408,7 @@ class InternalDebugLogger {
         if (this._log_console_silent) {
             // noop
         } else if (console_wrapper) {
-            console[logfunc](msg_info.message_console);
+            process.stderr.write(msg_info.message_console + '\n');
         } else {
             console[logfunc](...msg_info.message_browser);
         }
@@ -599,12 +595,6 @@ DebugLogger.prototype.original_console = function() {
 DebugLogger.prototype.wrapper_console = function() {
     console_wrapper.wrapper_console();
 };
-
-if (console_wrapper) {
-    //Register a "console" module DebugLogger for the console wrapper
-    const conlogger = new DebugLogger("CONSOLE.js");
-    console_wrapper.register_logger(conlogger);
-}
 
 let native_log_level = LOG_LEVEL;
 if (process.env.NOOBAA_LOG_LEVEL) {

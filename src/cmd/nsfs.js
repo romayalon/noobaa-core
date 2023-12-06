@@ -249,8 +249,8 @@ async function main(argv = minimist(process.argv.slice(2))) {
             if (argv.config_root) {
                 nsfs_config_root = String(argv.config_root);
                 config.NSFS_NC_CONF_DIR = nsfs_config_root;
-                require('../../config').load_nsfs_nc_config();
-                require('../../config').reload_nsfs_nc_config();
+                config.load_nsfs_nc_config();
+                config.reload_nsfs_nc_config();
             }
         }
         const http_port = Number(argv.http_port) || config.ENDPOINT_PORT;

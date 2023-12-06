@@ -1,10 +1,12 @@
 /* Copyright (C) 2020 NooBaa */
 'use strict';
 
+
 const SensitiveString = require('../util/sensitive_string');
 const minimist = require('minimist');
 const path = require('path');
 const _ = require('lodash');
+const dbg = require('../util/debug_module')(__filename);
 const config = require('../../config');
 const native_fs_utils = require('../util/native_fs_utils');
 const nb_native = require('../util/nb_native');
@@ -548,7 +550,7 @@ async function get_account_config_file_status(data, accounts_path, access_keys_p
         const config_data = await get_view_config_data(account_path);
         console.log(config_data);
     } catch (err) {
-        console.log('Account do not exists with access key : ' + data.access_keys[0].access_key);
+        process.stdout.write('Account do not exists with access key : ' + data.access_keys[0].access_key);
     }
 }
 
