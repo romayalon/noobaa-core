@@ -13,7 +13,7 @@ const assert = require('assert');
 const _ = require('lodash');
 const util = require('util');
 const { default: Ajv } = require('ajv');
-const nsfs_config_schema = require('./src/server/object_services/schemas/nsfs_config_schema');
+const nsfs_config_schema = require('./src/server/nc_nsfs_services/schemas/nsfs_config_schema');
 const ajv = new Ajv({ verbose: true, allErrors: true });
 
 /////////////////////////

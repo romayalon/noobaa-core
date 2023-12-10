@@ -204,7 +204,7 @@ mocha.describe('manage_nsfs cli', function() {
         const accounts_schema_dir = 'accounts';
         const access_keys_schema_dir = 'access_keys';
 
-        mocha.it('cli account create', async function() {
+        mocha.it('cli account add', async function() {
             const action = nc_nsfs_manage_actions.ADD;
             await fs_utils.create_fresh_path(new_buckets_path);
             await fs_utils.file_must_exist(new_buckets_path);
@@ -252,6 +252,7 @@ mocha.describe('manage_nsfs cli', function() {
                 await exec_manage_cli(type, action, { ...account_options, name: 'random' });
                 assert.fail('should have failed with account access key already exists');
             } catch (err) {
+                console.log('ROMY: err', err);
                 assert.ok(err.stdout.includes('Error: Account having the same access key already exists'));
             }
         });

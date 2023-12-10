@@ -15,7 +15,7 @@ const util = require('util');
 const bucket_policy_utils = require('../endpoint/s3/s3_bucket_policy_utils');
 const { default: Ajv } = require('ajv');
 const bucket_schema = require('../server/object_services/schemas/nsfs_bucket_schema');
-const account_schema = require('../server/object_services/schemas/nsfs_account_schema');
+const account_schema = require('../server/nc_nsfs_services/schemas/nsfs_account_schema');
 
 const KeysSemaphore = require('../util/keys_semaphore');
 const native_fs_utils = require('../util/native_fs_utils');

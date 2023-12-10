@@ -9,6 +9,10 @@ const _ = require('lodash');
 const config = require('../../config');
 const native_fs_utils = require('../util/native_fs_utils');
 const nb_native = require('../util/nb_native');
+const nsfs_bucket_schema = require('../server/nc_nsfs_services/schemas/nsfs_bucket_schema');
+const nsfs_account_schema = require('../server/nc_nsfs_services/schemas/nsfs_account_schema');
+const { default: Ajv } = require('ajv');
+const ajv = new Ajv({ verbose: true, allErrors: true });
 
 
 const HELP = `
@@ -199,7 +203,7 @@ async function fetch_bucket_data(argv, config_root, from_file) {
             versioning: 'DISABLED',
             path: argv.path,
             should_create_underlying_storage: false,
-            new_name: argv.new_name
+            new_name: argv.new_name,
         };
     }
     if (action === 'update') {
@@ -297,7 +301,7 @@ async function update_bucket_config_file(data, bucket_config_path, config_root_b
     const cur_name = data.name;
     const new_name = data.new_name;
     const update_name = data.new_name && cur_name && data.new_name.unwrap() !== cur_name.unwrap();
-
+    // ROMY CHECK if we need to remove data.new_name
     if (!update_name) {
         const full_bucket_config_path = get_config_file_path(bucket_config_path, data.name);
         data = JSON.stringify(data);
@@ -324,7 +328,6 @@ async function update_bucket_config_file(data, bucket_config_path, config_root_b
         process.stdout.write('Error: Bucket already exists with name : ' + data.name.unwrap() + '\n');
         process.exit(1);
     }
-
     data = JSON.stringify(_.omit(data, ['new_name']));
 
     await native_fs_utils.create_config_file(fs_context, bucket_config_path, new_bucket_config_path, data);
@@ -403,8 +406,8 @@ async function fetch_account_data(argv, config_root, from_file) {
             }],
             nsfs_account_config: {
                 distinguished_name: argv.user,
-                uid: !argv.user && argv.uid,
-                gid: !argv.user && argv.gid,
+                uid: argv.user ? undefined : argv.uid,
+                gid: argv.user ? undefined : argv.gid,
                 new_buckets_path: argv.new_buckets_path
             }
         }, _.isUndefined);
@@ -454,9 +457,9 @@ async function fetch_existing_account_data(config_root, target) {
     return data;
 }
 
-async function config_file_exists(fs_context, config_path) {
+async function config_file_exists(fs_context, config_path, use_lstat) {
     try {
-        await nb_native().fs.stat(fs_context, config_path);
+        await nb_native().fs.stat(fs_context, config_path, { use_lstat });
     } catch (err) {
         if (err.code === 'ENOENT') return false;
     }
@@ -476,7 +479,9 @@ async function add_account_config_file(data, accounts_path, access_keys_path, co
     const full_account_config_access_key_path = get_symlink_config_file_path(access_keys_path, access_key);
 
     const name_exists = await config_file_exists(fs_context, full_account_config_path);
-    const access_key_exists = await config_file_exists(fs_context, full_account_config_access_key_path);
+    const access_key_exists = await config_file_exists(fs_context, full_account_config_access_key_path, true);
+    console.log('ROMY - name_exists', name_exists, full_account_config_path);
+    console.log('ROMY - access_key_exists', access_key_exists, full_account_config_access_key_path);
 
     if (name_exists || access_key_exists) {
         if (name_exists) process.stdout.write('Error: Account having the same name already exists \n');
@@ -485,9 +490,13 @@ async function add_account_config_file(data, accounts_path, access_keys_path, co
     }
 
     data = JSON.stringify(data);
+    // add ajv.validate
     await native_fs_utils.create_config_file(fs_context, accounts_path, full_account_config_path, data);
+    console.log('ROMY 1');
     await native_fs_utils._create_path(access_keys_path, fs_context, config.BASE_MODE_CONFIG_DIR);
+    console.log('ROMY 2');
     await nb_native().fs.symlink(fs_context, full_account_config_path, full_account_config_access_key_path);
+    console.log('ROMY 3');
 }
 
 async function update_account_config_file(data, accounts_path, access_keys_path, config_root_backend) {
@@ -518,7 +527,8 @@ async function update_account_config_file(data, accounts_path, access_keys_path,
     const cur_access_key_config_path = get_symlink_config_file_path(access_keys_path, cur_access_key.unwrap());
     const new_access_key_config_path = get_symlink_config_file_path(access_keys_path, data.access_keys[0].access_key.unwrap());
     const name_exists = update_name && await config_file_exists(fs_context, new_account_config_path);
-    const access_key_exists = update_access_key && await config_file_exists(fs_context, new_access_key_config_path);
+    const access_key_exists = update_access_key && await config_file_exists(fs_context, new_access_key_config_path, true);
+
     if (name_exists || access_key_exists) {
         if (name_exists) process.stdout.write('Error: Account having the same name already exists \n');
         if (access_key_exists) process.stdout.write('Error: Account having the same access key already exists \n');
@@ -676,6 +686,18 @@ async function validate_bucket_add_args(data, update) {
         process.stdout.write('Error: Path should be a valid dir path : ' + data.path + '\n');
         process.exit(1);
     }
+    console.log('ROMY: bucket data', data);
+    const d = {
+        ..._.omit(data, ['new_name', 'wide']),
+        system_owner: data.system_owner.unwrap(),
+        bucket_owner: data.bucket_owner.unwrap(),
+        name: data.name.unwrap()
+    };
+    const valid = ajv.validate(nsfs_bucket_schema, d);
+    if (!valid) {
+        console.error('Error: Invalid bucket parameters', ajv.errors[0]?.message);
+        return false;
+    }
     return true;
 
 }
@@ -688,12 +710,27 @@ async function validate_account_add_args(data, update) {
         process.stdout.write('Error: Access key is mandatory, please use the --access_key flag');
         return false;
     }
+    if (data.nsfs_account_config) {
+        if (!data.nsfs_account_config.new_buckets_path) {
+            process.stdout.write('Error: account config new_buckets_path should not be empty');
+            return false;
+        }
+        if (!data.nsfs_account_config.distinguished_name && (
+            data.nsfs_account_config.uid === undefined ||
+            data.nsfs_account_config.gid === undefined)) {
+                process.stdout.write('Error: Account config distinguished_name or uid & gid should not be empty');
+                return false;
+        }
+    } else {
+        process.stdout.write('Error: Account config should not be empty');
+        return false;
+    }
     if ((data.nsfs_account_config.distinguished_name === undefined &&
             (data.nsfs_account_config.uid === undefined ||
-                data.nsfs_account_config.gid === undefined)) ||
-        !data.nsfs_account_config.new_buckets_path) {
-            process.stdout.write('Error: Account config should not be empty');
-        return false;
+            data.nsfs_account_config.gid === undefined)) ||
+            !data.nsfs_account_config.new_buckets_path) {
+                process.stdout.write('Error: Account config should not be empty');
+                return false;
     }
     if (!data.name || is_undefined(data.name.unwrap())) {
         process.stdout.write('Error: Account name is mandatory, please use the --name flag');
@@ -715,6 +752,21 @@ async function validate_account_add_args(data, update) {
     if (!bucket_dir_stat) {
         process.stdout.write('Error: new_buckets_path should be a valid dir path : ' + data.nsfs_account_config.new_buckets_path + '\n');
         process.exit(1);
+    }
+    console.log('ROMY: account data', data);
+    const d = {
+        ..._.omit(data, ['new_name', 'new_access_key']),
+        access_keys: [{
+            access_key: data.access_keys[0].access_key.unwrap(),
+            secret_key: data.access_keys[0].secret_key.unwrap()
+        }],
+        email: data.email.unwrap(),
+        name: data.name.unwrap()
+    };
+    const valid = ajv.validate(nsfs_account_schema, d);
+    if (!valid) {
+        console.error('Error: Invalid account parameters', ajv.errors[0]?.message);
+        return false;
     }
     return true;
 }
