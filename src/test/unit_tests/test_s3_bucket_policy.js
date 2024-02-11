@@ -3,10 +3,11 @@
 'use strict';
 
 // setup coretest first to prepare the env
-const coretest = require('./coretest');
+const { get_coretest_path, TMP_PATH} = require('../system_tests/test_utils');
+const coretest = require(get_coretest_path());
 const { rpc_client, EMAIL, POOL_LIST, anon_rpc_client } = coretest;
 const MDStore = require('../../server/object_services/md_store').MDStore;
-coretest.setup({ pools_to_create: [POOL_LIST[1]] });
+coretest.setup({ pools_to_create: POOL_LIST && [POOL_LIST[1]] });
 
 const { S3 } = require('@aws-sdk/client-s3');
 const { NodeHttpHandler } = require("@smithy/node-http-handler");
@@ -15,6 +16,8 @@ const mocha = require('mocha');
 const assert = require('assert');
 const { S3Error } = require('../../endpoint/s3/s3_errors');
 const config = require('../../../config');
+const path = require('path');
+const fs = require('fs');
 
 async function assert_throws_async(promise, expected_message = 'Access Denied') {
     try {
@@ -65,8 +68,21 @@ async function setup() {
     const account = {
         has_login: false,
         s3_access: true,
-        default_resource: POOL_LIST[1].name
+        default_resource: POOL_LIST ? POOL_LIST[1].name : undefined
     };
+    const tmp_fs_root = path.join(TMP_PATH, 'test_bucket_namespace_fs');
+    const public_new_buckets_dir = process.env.NC_CORETEST ? '/public_new_buckets_dir/' : '/';
+    const public_new_buckets_path = path.join(tmp_fs_root, public_new_buckets_dir);
+    await fs.promises.mkdir(public_new_buckets_path, { recursive: true });
+
+
+    if (process.env.NC_CORETEST) {
+        account.nsfs_account_config = {
+            uid: 0,
+            gid: 0,
+            new_buckets_path: public_new_buckets_path, // default resource is not namespace_resource
+        }
+    }
     const admin_keys = (await rpc_client.account.read_account({
         email: EMAIL,
     })).access_keys;
@@ -81,16 +97,21 @@ async function setup() {
         secretAccessKey: user_a_keys[0].secret_key.unwrap(),
     };
     s3_a = new S3(s3_creds);
+    console.log('ROMY s3_creds, s3_a', s3_creds);
+
     s3_creds.credentials = {
         accessKeyId: user_b_keys[0].access_key.unwrap(),
         secretAccessKey: user_b_keys[0].secret_key.unwrap(),
     };
     s3_b = new S3(s3_creds);
+    console.log('ROMY s3_creds, s3_b', s3_creds);
     await s3_b.createBucket({ Bucket: BKT_B });
     s3_creds.credentials = {
         accessKeyId: admin_keys[0].access_key.unwrap(),
         secretAccessKey: admin_keys[0].secret_key.unwrap(),
     };
+    console.log('ROMY s3_creds, s3_owner', s3_creds);
+
     s3_owner = new S3(s3_creds);
     await s3_owner.createBucket({ Bucket: BKT });
     s3_anon = new S3({

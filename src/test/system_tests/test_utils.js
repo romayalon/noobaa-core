@@ -8,6 +8,13 @@ const os_utils = require('../../util/os_utils');
 const native_fs_utils = require('../../util/native_fs_utils');
 
 /**
+ * TMP_PATH is a path to the tmp path based on the process platform
+ * in contrast to linux, /tmp/ path on mac is a symlink to /private/tmp/
+ */
+const TMP_PATH = os_utils.IS_MAC ? '/private/tmp/' : '/tmp/';
+
+
+/**
  * 
  * @param {*} need_to_exist 
  * @param {*} pool_id 
@@ -343,3 +350,4 @@ exports.nc_nsfs_manage_actions = nc_nsfs_manage_actions;
 exports.create_fs_user_by_platform = create_fs_user_by_platform;
 exports.delete_fs_user_by_platform = delete_fs_user_by_platform;
 exports.set_path_permissions_and_owner = set_path_permissions_and_owner;
+exports.TMP_PATH = TMP_PATH;
