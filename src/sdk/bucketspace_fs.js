@@ -646,14 +646,14 @@ class BucketSpaceFS extends BucketSpaceSimpleFS {
     // TODO: move the following 3 functions - has_bucket_action_permission(), validate_fs_bucket_access(), _has_access_to_nsfs_dir()
     // so they can be re-used
     async has_bucket_action_permission(bucket, account, action, bucket_path = "") {
-        const account_identifier = account.name.unwrap();
+        const account_identifier = account._id;
         dbg.log1('has_bucket_action_permission:', bucket.name.unwrap(), account_identifier, bucket.bucket_owner.unwrap());
 
-        const is_system_owner = account_identifier === bucket.system_owner.unwrap();
+        //const is_system_owner = account_identifier === bucket.system_owner.unwrap();
 
         // If the system owner account wants to access the bucket, allow it
-        if (is_system_owner) return true;
-        const is_owner = (bucket.bucket_owner.unwrap() === account_identifier);
+        //if (is_system_owner) return true;
+        const is_owner = (bucket.owner_account === account_identifier);
         const bucket_policy = bucket.s3_policy;
 
         if (!bucket_policy) return is_owner;
