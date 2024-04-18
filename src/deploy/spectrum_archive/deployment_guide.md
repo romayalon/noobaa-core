@@ -13,7 +13,7 @@ NooBaa is packaged as a RPM which needs to be installed in order to be able to u
 1. Install by using `dnf`, `yum` or `rpm`.
    - Example: `rpm -i noobaa-core-5.15.0-1.el8.x86_64.20231009`.
 2. NooBaa RPM installation should provide the following things
-	1. `noobaa_nsfs.service` file located at `/usr/lib/systemd/system/noobaa_nsfs.service`.
+	1. `noobaa-s3.service` file located at `/usr/lib/systemd/system/noobaa-s3.service`.
 	2. NooBaa source available at `/usr/local/noobaa-core`.
 
 ## NooBaa Configuration
@@ -86,9 +86,9 @@ $ ./src/deploy/spectrum_archive/setup_policies.sh /ibm/gpfs /ibm/gpfs/noobaadata
 
 ## Start NooBaa
 ```console
-$ systemctl start noobaa_nsfs
-$ systemctl enable noobaa_nsfs #optional
-$ systemctl status noobaa_nsfs # You should see status "Active" in green color
+$ systemctl start noobaa-s3
+$ systemctl enable noobaa-s3 #optional
+$ systemctl status noobaa-s3 # You should see status "Active" in green color
 ```
 
 ## Test NooBaa Installation

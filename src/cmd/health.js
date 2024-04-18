@@ -48,7 +48,7 @@ function print_usage() {
 }
 
 const HOSTNAME = 'localhost';
-const NSFS_SERVICE = 'noobaa_nsfs';
+const NOOBAA_S3_SERVICE = 'noobaa-s3';
 const RSYSLOG_SERVICE = 'rsyslog';
 const SYSLOG_NG_SERVICE = 'syslog-ng';
 const health_errors = {
@@ -131,7 +131,7 @@ class NSFSHealth {
         let endpoint_state;
         let memory;
         let syslog_ng;
-        const { service_status, pid } = await this.get_service_state(NSFS_SERVICE);
+        const { service_status, pid } = await this.get_service_state(NOOBAA_S3_SERVICE);
         if (pid !== '0') {
             endpoint_state = await this.get_endpoint_response();
             memory = await this.get_service_memory_usage();
@@ -156,13 +156,13 @@ class NSFSHealth {
         if (this.all_bucket_details) bucket_details = await this.get_bucket_status(this.config_root);
         if (this.all_account_details) account_details = await this.get_account_status(this.config_root);
         const health = {
-            service_name: NSFS_SERVICE,
+            service_name: NOOBAA_S3_SERVICE,
             status: service_health,
             memory: memory,
             error: error_code,
             checks: {
                 services: [{
-                        name: NSFS_SERVICE,
+                        name: NOOBAA_S3_SERVICE,
                         service_status: service_status,
                         pid: pid,
                         error_type: health_errors_tyes.PERSISTENT,
@@ -316,7 +316,7 @@ class NSFSHealth {
     }
 
     async get_service_memory_usage() {
-        const memory_status = await os_util.exec('systemctl status ' + NSFS_SERVICE + ' | grep Memory ', {
+        const memory_status = await os_util.exec('systemctl status ' + NOOBAA_S3_SERVICE + ' | grep Memory ', {
             ignore_rc: true,
             return_stdout: true,
             trim_stdout: true,

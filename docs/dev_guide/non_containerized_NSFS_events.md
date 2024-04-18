@@ -1,6 +1,6 @@
-# Non Containerized NSFS Events
+# NooBaa-S3 Non Containerized Events
 
-This document will list all the possible Noobaa non-containerized NSFS events and possible reasons and resolutions.
+This document will list all the possible NooBaa-S3 non-containerized events and possible reasons and resolutions.
 
 ## Events
 

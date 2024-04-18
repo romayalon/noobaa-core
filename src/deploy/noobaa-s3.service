@@ -1,5 +1,5 @@
 [Unit]
-Description=The NooBaa nsfs service.
+Description=The NooBaa-S3 service.
 After=gpfs-wait-mount.service
 
 [Service]
@@ -8,8 +8,7 @@ RestartSec=2
 User=root
 Group=root
 ExecStartPre=/usr/local/noobaa-core/bin/node /usr/local/noobaa-core/src/upgrade/upgrade_manager.js --nsfs true --upgrade_scripts_dir /usr/local/noobaa-core/src/upgrade/nsfs_upgrade_scripts
-ExecStart=/usr/local/noobaa-core/bin/node /usr/local/noobaa-core/src/cmd/nsfs.js
-EnvironmentFile=-/etc/sysconfig/noobaa_nsfs
+ExecStart=/usr/local/noobaa-core/bin/node /usr/local/noobaa-core/src/cmd/noobaa-s3.js
 ExecStop=/bin/kill $MAINPID
 WorkingDirectory=/usr/local/noobaa-core/
 LimitNOFILE=65536

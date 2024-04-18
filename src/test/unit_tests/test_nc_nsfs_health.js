@@ -106,7 +106,7 @@ mocha.describe('nsfs nc health', function() {
             assert.strictEqual(health_status.checks.buckets_status.valid_buckets[0].name, 'bucket1');
         });
 
-        mocha.it('NSFS service is inactive', async function() {
+        mocha.it('NooBaa-S3 service is inactive', async function() {
             Health.get_service_state.restore();
             Health.get_endpoint_response.restore();
             const get_service_state = sinon.stub(Health, "get_service_state");
@@ -119,7 +119,7 @@ mocha.describe('nsfs nc health', function() {
             assert.strictEqual(health_status.error.error_code, 'NOOBAA_NSFS_SERVICE_FAILED');
         });
 
-        mocha.it('NSFS rsyslog service is inactive', async function() {
+        mocha.it('NooBaa-S3 rsyslog service is inactive', async function() {
             Health.get_service_state.restore();
             Health.get_endpoint_response.restore();
             const get_service_state = sinon.stub(Health, "get_service_state");
@@ -132,7 +132,7 @@ mocha.describe('nsfs nc health', function() {
             assert.strictEqual(health_status.error.error_code, 'RSYSLOG_SERVICE_FAILED');
         });
 
-        mocha.it('NSFS endpoint return error response is inactive', async function() {
+        mocha.it('NooBaa-S3 endpoint return error response is inactive', async function() {
             Health.get_service_state.restore();
             Health.get_endpoint_response.restore();
             const get_service_state = sinon.stub(Health, "get_service_state");

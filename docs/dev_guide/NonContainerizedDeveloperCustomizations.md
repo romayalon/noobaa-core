@@ -21,7 +21,7 @@ The following list consists of supported optional developer customization  -
 2. Set the ENDPOINT_FORKS key to the desired level.
 Example:
 "ENDPOINT_FORKS":8
-3. systemctl restart noobaa_nsfs
+3. systemctl restart noobaa-s3
 ```
 
 ## 2. Log debug level -
@@ -47,7 +47,7 @@ Supported log debug levels:
 2. Set the NOOBAA_LOG_LEVEL key to the desired level.
 Example:
 "NOOBAA_LOG_LEVEL": "nsfs"
-3. systemctl restart noobaa_nsfs
+3. systemctl restart noobaa-s3
 ```
 
 ## 3. Ports -
@@ -73,7 +73,7 @@ The following S3 endpoint ports can be customized:
 2. Set the config key -
 Example:
 "ENDPOINT_PORT": 5555
-3. systemctl restart noobaa_nsfs
+3. systemctl restart noobaa-s3
 ```
 
 ## 4. Allow http requests-
@@ -91,7 +91,7 @@ Example:
 2. Set the config key -
 Example:
 "ALLOW_HTTP": true
-3. systemctl restart noobaa_nsfs
+3. systemctl restart noobaa-s3
 ```
 
 ## 5. MD5 calculation -
@@ -126,7 +126,7 @@ Example:
 2. Set the config key -
 Example:
 "UV_THREADPOOL_SIZE": 8
-3. systemctl restart noobaa_nsfs
+3. systemctl restart noobaa-s3
 ```
 
 ## 7. GPFS library path -
@@ -144,7 +144,7 @@ Example:
 2. Set the config key -
 Example:
 "GPFS_DL_PATH": "/usr/lib64/libgpfs.so"
-3. systemctl restart noobaa_nsfs
+3. systemctl restart noobaa-s3
 ```
 
 ## 8. Buffer pool memory limit -
@@ -161,7 +161,7 @@ Example:
 2. Set the config key in bytes-
 Example: 
 "NSFS_BUF_POOL_MEM_LIMIT" : 52428800
-3. systemctl restart noobaa_nsfs
+3. systemctl restart noobaa-s3
 ```
 
 ## 9. Buffer size -
@@ -179,7 +179,7 @@ Example:
 2. Set the config key in bytes-
 Example:
 "NSFS_BUF_SIZE": 10485760
-3. systemctl restart noobaa_nsfs
+3. systemctl restart noobaa-s3
 ```
 
 ## 10. Open read mode -
@@ -280,7 +280,7 @@ Example:
 2. Set the config key -
 Example:
 "NSFS_NC_STORAGE_BACKEND": "GPFS"
-3. systemctl restart noobaa_nsfs
+3. systemctl restart noobaa-s3
 ```
 
 ## 16. Directories cache max directory size -
@@ -298,7 +298,7 @@ Example:
 2. Set the config key -
 Example:
 "NSFS_DIR_CACHE_MAX_DIR_SIZE": 268435456
-3. systemctl restart noobaa_nsfs
+3. systemctl restart noobaa-s3
 ```
 
 ## 17. Directories cache max total usage size -
@@ -316,7 +316,7 @@ Example:
 2. Set the config key -
 Example:
 "NSFS_DIR_CACHE_MAX_TOTAL_SIZE": 805306368
-3. systemctl restart noobaa_nsfs
+3. systemctl restart noobaa-s3
 ```
 
 
@@ -334,7 +334,7 @@ Example:
 2. Set the config key -
 Example:
 "ENABLE_DEV_RANDOM_SEED": false
-3. systemctl restart noobaa_nsfs
+3. systemctl restart noobaa-s3
 ```
 
 ## 19. Set Master Keys Store type-
@@ -351,7 +351,7 @@ Example:
 2. Set the config key -
 Example:
 "NC_MASTER_KEYS_STORE_TYPE": 'executable'
-3. systemctl restart noobaa_nsfs
+3. systemctl restart noobaa-s3
 ```
 
 ## 20. Set Master Keys File Location -
@@ -368,7 +368,7 @@ Example:
 2. Set the config key -
 Example:
 "NC_MASTER_KEYS_FILE_LOCATION": '/private/tmp/master_keys.json'
-3. systemctl restart noobaa_nsfs
+3. systemctl restart noobaa-s3
 ```
 
 ## 21. Set Master Keys GET executable script -
@@ -385,7 +385,7 @@ Example:
 2. Set the config key -
 Example:
 "NC_MASTER_KEYS_GET_EXECUTABLE": '/private/tmp/get_master_keys.sh'
-3. systemctl restart noobaa_nsfs
+3. systemctl restart noobaa-s3
 ```
 
 ## 22. Set Master Keys PUT executable script -
@@ -402,7 +402,7 @@ Example:
 2. Set the config key -
 Example:
 "NC_MASTER_KEYS_PUT_EXECUTABLE": '/private/tmp/put_master_keys.sh'
-3. systemctl restart noobaa_nsfs
+3. systemctl restart noobaa-s3
 ```
 
 ## Config.json example 

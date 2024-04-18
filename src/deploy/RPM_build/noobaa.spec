@@ -77,8 +77,7 @@ ln -s /usr/local/noobaa-core/node/bin/npm $RPM_BUILD_ROOT/usr/local/noobaa-core/
 ln -s /usr/local/noobaa-core/node/bin/npx $RPM_BUILD_ROOT/usr/local/noobaa-core/bin/npx
 
 mkdir -p $RPM_BUILD_ROOT%{_unitdir}/
-mv $RPM_BUILD_ROOT/usr/local/noobaa-core/src/deploy/noobaa_nsfs.service $RPM_BUILD_ROOT%{_unitdir}/noobaa_nsfs.service
-ln -s /usr/local/noobaa-core/src/deploy/nsfs_env.env $RPM_BUILD_ROOT/usr/local/noobaa-core/nsfs_env.env
+mv $RPM_BUILD_ROOT/usr/local/noobaa-core/src/deploy/noobaa-s3.service $RPM_BUILD_ROOT%{_unitdir}/noobaa-s3.service
 mkdir -p $RPM_BUILD_ROOT/etc/noobaa.conf.d/
 
 mkdir -p $RPM_BUILD_ROOT/etc/rsyslog.d/
@@ -89,7 +88,7 @@ ln -s /usr/local/noobaa-core/src/deploy/standalone/logrotate_noobaa.conf $RPM_BU
 
 %files
 /usr/local/noobaa-core
-%{_unitdir}/noobaa_nsfs.service
+%{_unitdir}/noobaa-s3.service
 /etc/logrotate.d/noobaa/logrotate_noobaa.conf
 /etc/rsyslog.d/noobaa_syslog.conf
 /etc/noobaa.conf.d/

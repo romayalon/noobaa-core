@@ -10,7 +10,7 @@ const minimist = require('minimist');
 // using functions to avoid loading modules until the actual command is parsed from args
 const CORE_COMMANDS = Object.freeze({
     api: () => require('./api'),
-    nsfs: () => require('./nsfs'),
+    'noobaa-s3': () => require('./noobaa-s3'),
     backingstore: () => require('./backingstore'),
     web: () => require('../server/web_server'),
     s3: () => require('../endpoint/endpoint'),
