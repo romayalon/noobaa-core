@@ -245,7 +245,7 @@ Example:
 **Steps -**
 ```
 1. run CLI command
-node src/cmd/manage_nsfs whitelist --ips '["127.0.0.1", "192.000.10.000", "3002:0bd6:0000:0000:0000:ee00:0033:000"]'  2>/dev/null
+node src/cmd/noobaa-cli whitelist --ips '["127.0.0.1", "192.000.10.000", "3002:0bd6:0000:0000:0000:ee00:0033:000"]'  2>/dev/null
 ```
 
 ## 14. Config directory backend -

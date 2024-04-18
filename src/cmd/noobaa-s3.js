@@ -41,7 +41,7 @@ const path = require('path');
 const json_utils = require('../util/json_utils');
 //const { RPC_BUFFERS } = require('../rpc');
 const pkg = require('../../package.json');
-const NoobaaEvent = require('../manage_nsfs/manage_nsfs_events_utils').NoobaaEvent;
+const NoobaaEvent = require('../noobaa_nc/nc_events_utils').NoobaaEvent;
 
 const HELP = `
 Help:

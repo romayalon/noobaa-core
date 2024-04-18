@@ -122,7 +122,7 @@ For more details about the available properties and an example see - [Non Contai
 
 ## Create accounts and exported buckets configuration files - ##
 
-In order to create accounts and exported buckets see the management CLI instructions - [Bucket and Account Manage CLI](#bucket-and-account-manage-cli) <br />
+In order to create accounts and exported buckets see the NooBaa management CLI instructions - [NooBaa Bucket and Account Manage CLI](#bucket-and-account-manage-cli) <br />
 Design of Accounts and buckets configuration entities - [NonContainerizedNooBaa-S3](https://github.com/noobaa/noobaa-core/blob/master/docs/design/NonContainerizedNooBaa-S3Design.md). <br />
 **Note** - All required paths on the configuration files (bucket - path, account - new_buckets_path) must be absolute paths.
 
@@ -146,7 +146,7 @@ journalctl -u noobaa-s3.service
 ## S3 Test
 
 #### 1. Create account -
-see the management CLI instructions for creating an account - [Bucket and Account Manage CLI](#bucket-and-account-manage-cli)
+see the NooBaa CLI instructions for creating an account - [NooBaa Bucket and Account Manage CLI](#bucket-and-account-manage-cli)
 
 #### 2. Install aws cli -
 see https://docs.aws.amazon.com/cli/latest/userguide/getting-started-install.html
@@ -431,44 +431,44 @@ These error codes will get attached with a specific Bucket or Account schema ins
 #### Resolutions
 - Check for schema config file in respective Accounts or Buckets dir.
 
-## Bucket and Account Manage CLI
+## NooBaa Bucket and Account Manage CLI
 Users can create, get status, update, delete, and list buckets and accounts using CLI. If the config directory is missing CLI will create one and also create accounts and buckets sub-directories in it and default config directory is `${config.NSFS_NC_DEFAULT_CONF_DIR}`.
 
 CLI will never create or delete a bucket directory for the user if a bucket directory is missing CLI will return with error.
 
 NOTES -
-1. manage_nsfs execution requires root permissions.
+1. noobaa-cli execution requires root permissions.
 2. While path specifies a GPFS path, it's recommended to add fs_backend=GPFS in order to increase performance by ordering NooBaa to use GPFS library.
 
 Account Commands
 ```
-sudo node src/cmd/manage_nsfs account add --config_root ../standalon/config_root --name noobaa --new_buckets_path ../standalon/nsfs_root/ --fs_backend GPFS 2>/dev/null
+sudo node src/cmd/noobaa-cli account add --config_root ../standalon/config_root --name noobaa --new_buckets_path ../standalon/nsfs_root/ --fs_backend GPFS 2>/dev/null
 
-sudo node src/cmd/manage_nsfs account update --config_root ../standalon/config_root --name noobaa --fs_backend GPFS 2>/dev/null
+sudo node src/cmd/noobaa-cli account update --config_root ../standalon/config_root --name noobaa --fs_backend GPFS 2>/dev/null
 
-sudo node src/cmd/manage_nsfs account status --config_root ../standalon/config_root --name noobaa 2>/dev/null
+sudo node src/cmd/noobaa-cli account status --config_root ../standalon/config_root --name noobaa 2>/dev/null
 
-sudo node src/cmd/manage_nsfs account delete --config_root ../standalon/config_root --name noobaa 2>/dev/null
+sudo node src/cmd/noobaa-cli account delete --config_root ../standalon/config_root --name noobaa 2>/dev/null
 
-sudo node src/cmd/manage_nsfs account list --config_root ../standalon/config_root 2>/dev/null
+sudo node src/cmd/noobaa-cli account list --config_root ../standalon/config_root 2>/dev/null
 
  ```
 
 Bucket Commands
 Note: before creating a bucket, a user must create an account.
 ```
-sudo node src/cmd/manage_nsfs bucket add --config_root ../standalon/config_root --name bucket1 --owner noobaa --path ../standalon/nsfs_root/1 --fs_backend GPFS 2>/dev/null
+sudo node src/cmd/noobaa-cli bucket add --config_root ../standalon/config_root --name bucket1 --owner noobaa --path ../standalon/nsfs_root/1 --fs_backend GPFS 2>/dev/null
 
-sudo node src/cmd/manage_nsfs bucket update --config_root ../standalon/config_root --name bucket1 --owner noobaa --fs_backend GPFS 2>/dev/null
+sudo node src/cmd/noobaa-cli bucket update --config_root ../standalon/config_root --name bucket1 --owner noobaa --fs_backend GPFS 2>/dev/null
 
-sudo node src/cmd/manage_nsfs bucket status --config_root ../standalon/config_root --name bucket1 2>/dev/null
+sudo node src/cmd/noobaa-cli bucket status --config_root ../standalon/config_root --name bucket1 2>/dev/null
 
-sudo node src/cmd/manage_nsfs bucket delete --config_root ../standalon/config_root --name bucket1 2>/dev/null
+sudo node src/cmd/noobaa-cli bucket delete --config_root ../standalon/config_root --name bucket1 2>/dev/null
 
-sudo node src/cmd/manage_nsfs bucket list --config_root ../standalon/config_root 2>/dev/null
+sudo node src/cmd/noobaa-cli bucket list --config_root ../standalon/config_root 2>/dev/null
 
 ```
-NSFS management CLI run will create both accounts, access_keys, and buckets directories if they are missing under the config_root directory.
+NooBaa CLI run will create both accounts, access_keys, and buckets directories if they are missing under the config_root directory.
 **Important**:  All the Account/Bucket commands end with `2>/dev/null` to make sure there are no unwanted logs.
 
 Using `from_file` flag:
@@ -476,8 +476,8 @@ Using `from_file` flag:
 - General use:
 
 ```bash
-sudo node src/cmd/manage_nsfs account add --config_root ../standalon/config_root --from_file <options_JSON_file_path>
-sudo node src/cmd/manage_nsfs bucket add --config_root ../standalon/config_root --from_file <options_JSON_file_path>
+sudo node src/cmd/noobaa-cli account add --config_root ../standalon/config_root --from_file <options_JSON_file_path>
+sudo node src/cmd/noobaa-cli bucket add --config_root ../standalon/config_root --from_file <options_JSON_file_path>
 ```
 
 - The options are key-value, where the key is the same as suggested flags, for example:
@@ -494,7 +494,7 @@ sudo node src/cmd/manage_nsfs bucket add --config_root ../standalon/config_root 
 ```
 
 ```bash
-sudo node src/cmd/manage_nsfs account add --config_root ../standalon/config_root --from_file <options_account_JSON_file_path>
+sudo node src/cmd/noobaa-cli account add --config_root ../standalon/config_root --from_file <options_account_JSON_file_path>
 ```
 
 (2) Create JSON file for bucket:
@@ -508,13 +508,13 @@ sudo node src/cmd/manage_nsfs account add --config_root ../standalon/config_root
 ```
 
 ```
-sudo node src/cmd/manage_nsfs bucket add --config_root ../standalon/config_root --from_file <options_bucket_JSON_file_path>
+sudo node src/cmd/noobaa-cli bucket add --config_root ../standalon/config_root --from_file <options_bucket_JSON_file_path>
 ```
 
 - When using `from_file` flag the details about the account/bucket should be only inside the options JSON file.
 - The JSON config file and JSON options file of account are different! 
 
-## NSFS Certificate
+## NooBaa S3 Certificate
 
 Non containerized NooBaa-S3 certificates/ directory location will be under the config_root path. <br />
 The certificates/ directory should contain SSL files tls.key and tls.crt. <br />
@@ -638,5 +638,5 @@ systemctl restart noobaa_s3
 Access is restricted to these whitelist IPs. If there are no IPs mentioned all IPs are allowed. WhiteList IPs are added to cnfig.json.
 
 ```
-node src/cmd/manage_nsfs whitelist --ips '["127.0.0.1", "192.000.10.000", "3002:0bd6:0000:0000:0000:ee00:0033:000"]'  2>/dev/null
+node src/cmd/noobaa-cli whitelist --ips '["127.0.0.1", "192.000.10.000", "3002:0bd6:0000:0000:0000:ee00:0033:000"]'  2>/dev/null
 ```

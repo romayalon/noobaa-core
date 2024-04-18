@@ -13,7 +13,7 @@ dbg.set_process_name('test_ceph_s3');
 
 const os_utils = require('../../../util/os_utils');
 const { CEPH_TEST, account_path, account_tenant_path } = require('./test_ceph_s3_constants.js');
-const nc_mkm = require('../../../manage_nsfs/nc_master_key_manager').get_instance();
+const nc_mkm = require('../../../noobaa_nc/nc_master_key_manager').get_instance();
 
 async function main() {
     try {

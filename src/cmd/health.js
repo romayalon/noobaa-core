@@ -12,7 +12,7 @@ const nb_native = require('../util/nb_native');
 const native_fs_utils = require('../util/native_fs_utils');
 const { read_stream_join } = require('../util/buffer_utils');
 const { make_https_request } = require('../util/http_utils');
-const { TYPES } = require('../manage_nsfs/manage_nsfs_constants');
+const { TYPES } = require('../noobaa_nc/noobaa_nc_constants');
 
 const HELP = `
 Help:

@@ -9,7 +9,7 @@ const config = require('../../../../config');
 const fs_utils = require('../../../util/fs_utils');
 const nb_native = require('../../../util/nb_native');
 const cloud_utils = require('../../../util/cloud_utils');
-const nc_mkm = require('../../../manage_nsfs/nc_master_key_manager');
+const nc_mkm = require('../../../noobaa_nc/nc_master_key_manager');
 const { get_process_fs_context } = require('../../../util/native_fs_utils');
 
 const DEFAULT_FS_CONFIG = get_process_fs_context();

@@ -11,7 +11,7 @@ const config = require('../../../config');
 const NSFSHealth = require('../../cmd/health');
 const fs_utils = require('../../util/fs_utils');
 const nb_native = require('../../util/nb_native');
-const { CONFIG_SUBDIRS } = require('../../manage_nsfs/manage_nsfs_constants');
+const { CONFIG_SUBDIRS } = require('../../noobaa_nc/noobaa_nc_constants');
 const { get_process_fs_context, get_umasked_mode } = require('../../util/native_fs_utils');
 const { TMP_PATH, create_fs_user_by_platform, delete_fs_user_by_platform } = require('../system_tests/test_utils');
 

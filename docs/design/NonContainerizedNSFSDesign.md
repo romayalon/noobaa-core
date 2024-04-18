@@ -172,4 +172,4 @@ config.json will be reloaded every 10 seconds automatically, please notice that 
 
 ### Configuration files (accounts/buckets) permissions
 - Configuration files created under accounts/ or buckets/ will have 600 permissions (read, write, execute) for the owner of the config file only. 
-- config_file created by manage_nsfs.js CLI tool will be owned by the user who ran the command. 
+- config_file created by noobaa-cli.js CLI tool will be owned by the user who ran the command. 

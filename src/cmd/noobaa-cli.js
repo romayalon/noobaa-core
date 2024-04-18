@@ -14,25 +14,25 @@ const string_utils = require('../util/string_utils');
 const native_fs_utils = require('../util/native_fs_utils');
 const mongo_utils = require('../util/mongo_utils');
 const SensitiveString = require('../util/sensitive_string');
-const ManageCLIError = require('../manage_nsfs/manage_nsfs_cli_errors').ManageCLIError;
-const NSFS_CLI_ERROR_EVENT_MAP = require('../manage_nsfs/manage_nsfs_cli_errors').NSFS_CLI_ERROR_EVENT_MAP;
-const ManageCLIResponse = require('../manage_nsfs/manage_nsfs_cli_responses').ManageCLIResponse;
-const NSFS_CLI_SUCCESS_EVENT_MAP = require('../manage_nsfs/manage_nsfs_cli_responses').NSFS_CLI_SUCCESS_EVENT_MAP;
-const manage_nsfs_glacier = require('../manage_nsfs/manage_nsfs_glacier');
+const NooBaaCLIError = require('../noobaa_nc/noobaa_nc_cli_errors').NooBaaCLIError;
+const NSFS_CLI_ERROR_EVENT_MAP = require('../noobaa_nc/noobaa_nc_cli_errors').NSFS_CLI_ERROR_EVENT_MAP;
+const NooBaaCLIResponse = require('../noobaa_nc/noobaa_nc_cli_responses').NooBaaCLIResponse;
+const NSFS_CLI_SUCCESS_EVENT_MAP = require('../noobaa_nc/noobaa_nc_cli_responses').NSFS_CLI_SUCCESS_EVENT_MAP;
+const noobaa_cli_glacier = require('../noobaa_nc/nc_glacier');
 const bucket_policy_utils = require('../endpoint/s3/s3_bucket_policy_utils');
-const nsfs_schema_utils = require('../manage_nsfs/nsfs_schema_utils');
-const { print_usage } = require('../manage_nsfs/manage_nsfs_help_utils');
+const nsfs_schema_utils = require('../noobaa_nc/noobaa_nc_schema_utils');
+const { print_usage } = require('../noobaa_nc/noobaa_cli_help_utils');
 const { TYPES, ACTIONS, VALID_OPTIONS, OPTION_TYPE, FROM_FILE, BOOLEAN_STRING_VALUES,
-    LIST_ACCOUNT_FILTERS, LIST_BUCKET_FILTERS, GLACIER_ACTIONS, LIST_UNSETABLE_OPTIONS } = require('../manage_nsfs/manage_nsfs_constants');
-const NoobaaEvent = require('../manage_nsfs/manage_nsfs_events_utils').NoobaaEvent;
-const nc_mkm = require('../manage_nsfs/nc_master_key_manager').get_instance();
+    LIST_ACCOUNT_FILTERS, LIST_BUCKET_FILTERS, GLACIER_ACTIONS, LIST_UNSETABLE_OPTIONS } = require('../noobaa_nc/noobaa_nc_constants');
+const NoobaaEvent = require('../noobaa_nc/nc_events_utils').NoobaaEvent;
+const nc_mkm = require('../noobaa_nc/nc_master_key_manager').get_instance();
 
 function throw_cli_error(error_code, detail, event_arg) {
     const error_event = NSFS_CLI_ERROR_EVENT_MAP[error_code.code];
     if (error_event) {
         new NoobaaEvent(error_event).create_event(undefined, event_arg, undefined);
     }
-    const err = new ManageCLIError(error_code).to_string(detail);
+    const err = new NooBaaCLIError(error_code).to_string(detail);
     process.stdout.write(err + '\n');
     process.exit(1);
 }
@@ -42,7 +42,7 @@ function write_stdout_response(response_code, detail, event_arg) {
     if (response_event) {
         new NoobaaEvent(response_event).create_event(undefined, event_arg, undefined);
     }
-    const res = new ManageCLIResponse(response_code).to_string(detail);
+    const res = new NooBaaCLIResponse(response_code).to_string(detail);
     process.stdout.write(res + '\n');
     process.exit(0);
 }
@@ -84,7 +84,7 @@ async function check_and_create_config_dirs() {
 async function main(argv = minimist(process.argv.slice(2))) {
     try {
         if (process.getuid() !== 0 || process.getgid() !== 0) {
-            throw new Error('Root permissions required for Manage NSFS execution.');
+            throw new Error('Root permissions required for NooBaa CLI execution.');
         }
         const type = argv._[0] || '';
         const action = argv._[1] || '';
@@ -94,7 +94,7 @@ async function main(argv = minimist(process.argv.slice(2))) {
         const user_input_from_file = await validate_input_types(type, action, argv);
         const user_input = user_input_from_file || argv;
         config_root = argv.config_root ? String(argv.config_root) : config.NSFS_NC_CONF_DIR;
-        if (!config_root) throw_cli_error(ManageCLIError.MissingConfigDirPath);
+        if (!config_root) throw_cli_error(NooBaaCLIError.MissingConfigDirPath);
 
         accounts_dir_path = path.join(config_root, accounts_dir_name);
         access_keys_dir_path = path.join(config_root, access_keys_dir_name);
@@ -112,15 +112,15 @@ async function main(argv = minimist(process.argv.slice(2))) {
             await glacier_management(argv);
         } else {
             // we should not get here (we check it before)
-            throw_cli_error(ManageCLIError.InvalidType);
+            throw_cli_error(NooBaaCLIError.InvalidType);
         }
     } catch (err) {
-        dbg.log1('NSFS Manage command: exit on error', err.stack || err);
-        const manage_err = ((err instanceof ManageCLIError) && err) ||
-            new ManageCLIError(ManageCLIError.FS_ERRORS_TO_MANAGE[err.code] ||
-                ManageCLIError.RPC_ERROR_TO_MANAGE[err.rpc_code] ||
-                ManageCLIError.InternalError);
-        throw_cli_error(manage_err, err.stack || err);
+        dbg.log1('NooBaa CLI command: exit on error', err.stack || err);
+        const noobaa_cli_err = ((err instanceof NooBaaCLIError) && err) ||
+            new NooBaaCLIError(NooBaaCLIError.FS_ERRORS_TO_NOOBAA_CLI_ERRORS[err.code] ||
+                NooBaaCLIError.RPC_ERROR_TO_NOOBAA_CLI_ERROR[err.rpc_code] ||
+                NooBaaCLIError.InternalError);
+        throw_cli_error(noobaa_cli_err, err.stack || err);
     }
 }
 
@@ -183,7 +183,7 @@ async function fetch_existing_bucket_data(target) {
         const bucket_config_path = get_config_file_path(buckets_dir_path, target.name);
         source = await get_config_data(bucket_config_path);
     } catch (err) {
-        throw_cli_error(ManageCLIError.NoSuchBucket, target.name);
+        throw_cli_error(NooBaaCLIError.NoSuchBucket, target.name);
     }
     const data = _.merge({}, source, target);
     return data;
@@ -202,7 +202,7 @@ async function add_bucket(data) {
     const fs_context = native_fs_utils.get_process_fs_context(config_root_backend);
     const bucket_conf_path = get_config_file_path(buckets_dir_path, data.name);
     const exists = await native_fs_utils.is_path_exists(fs_context, bucket_conf_path);
-    if (exists) throw_cli_error(ManageCLIError.BucketAlreadyExists, data.name, { bucket: data.name });
+    if (exists) throw_cli_error(NooBaaCLIError.BucketAlreadyExists, data.name, { bucket: data.name });
     data._id = mongo_utils.mongoObjectId();
     const data_json = JSON.stringify(data);
     // We take an object that was stringify
@@ -210,7 +210,7 @@ async function add_bucket(data) {
     // for validating against the schema we need an object, hence we parse it back to object
     nsfs_schema_utils.validate_bucket_schema(JSON.parse(data_json));
     await native_fs_utils.create_config_file(fs_context, buckets_dir_path, bucket_conf_path, data_json);
-    write_stdout_response(ManageCLIResponse.BucketCreated, data_json, { bucket: data.name });
+    write_stdout_response(NooBaaCLIResponse.BucketCreated, data_json, { bucket: data.name });
 }
 
 /**
@@ -226,7 +226,7 @@ async function get_bucket_owner_account(bucket_owner) {
     } catch (err) {
         if (err.code === 'ENOENT') {
             const detail_msg = `bucket owner ${bucket_owner} does not exists`;
-            throw_cli_error(ManageCLIError.BucketSetForbiddenNoBucketOwner, detail_msg, {bucket_owner: bucket_owner});
+            throw_cli_error(NooBaaCLIError.BucketSetForbiddenNoBucketOwner, detail_msg, {bucket_owner: bucket_owner});
         }
         throw err;
     }
@@ -238,9 +238,9 @@ async function get_bucket_status(data) {
     try {
         const bucket_path = get_config_file_path(buckets_dir_path, data.name);
         const config_data = await get_config_data(bucket_path);
-        write_stdout_response(ManageCLIResponse.BucketStatus, config_data);
+        write_stdout_response(NooBaaCLIResponse.BucketStatus, config_data);
     } catch (err) {
-        const err_code = err.code === 'EACCES' ? ManageCLIError.AccessDenied : ManageCLIError.NoSuchBucket;
+        const err_code = err.code === 'EACCES' ? NooBaaCLIError.AccessDenied : NooBaaCLIError.NoSuchBucket;
         throw_cli_error(err_code, data.name);
     }
 }
@@ -262,7 +262,7 @@ async function update_bucket(data) {
         // for validating against the schema we need an object, hence we parse it back to object
         nsfs_schema_utils.validate_bucket_schema(JSON.parse(data));
         await native_fs_utils.update_config_file(fs_context, buckets_dir_path, bucket_config_path, data);
-        write_stdout_response(ManageCLIResponse.BucketUpdated, data);
+        write_stdout_response(NooBaaCLIResponse.BucketUpdated, data);
         return;
     }
 
@@ -272,7 +272,7 @@ async function update_bucket(data) {
     const new_bucket_config_path = get_config_file_path(buckets_dir_path, data.name);
 
     const exists = await native_fs_utils.is_path_exists(fs_context, new_bucket_config_path);
-    if (exists) throw_cli_error(ManageCLIError.BucketAlreadyExists, data.name);
+    if (exists) throw_cli_error(NooBaaCLIError.BucketAlreadyExists, data.name);
 
     data = JSON.stringify(_.omit(data, ['new_name']));
     // We take an object that was stringify
@@ -281,7 +281,7 @@ async function update_bucket(data) {
     nsfs_schema_utils.validate_bucket_schema(JSON.parse(data));
     await native_fs_utils.create_config_file(fs_context, buckets_dir_path, new_bucket_config_path, data);
     await native_fs_utils.delete_config_file(fs_context, buckets_dir_path, cur_bucket_config_path);
-    write_stdout_response(ManageCLIResponse.BucketUpdated, data);
+    write_stdout_response(NooBaaCLIResponse.BucketUpdated, data);
 }
 
 async function delete_bucket(data, force) {
@@ -298,11 +298,11 @@ async function delete_bucket(data, force) {
         if (object_entries.length === 0 || force) {
             await native_fs_utils.folder_delete(bucket_temp_dir_path, fs_context_fs_backend, true);
             await native_fs_utils.delete_config_file(fs_context_config_root_backend, buckets_dir_path, bucket_config_path);
-            write_stdout_response(ManageCLIResponse.BucketDeleted, '', {bucket: data.name});
+            write_stdout_response(NooBaaCLIResponse.BucketDeleted, '', {bucket: data.name});
         }
-        throw_cli_error(ManageCLIError.BucketDeleteForbiddenHasObjects, data.name);
+        throw_cli_error(NooBaaCLIError.BucketDeleteForbiddenHasObjects, data.name);
     } catch (err) {
-        if (err.code === 'ENOENT') throw_cli_error(ManageCLIError.NoSuchBucket, data.name);
+        if (err.code === 'ENOENT') throw_cli_error(NooBaaCLIError.NoSuchBucket, data.name);
         throw err;
     }
 }
@@ -321,10 +321,10 @@ async function manage_bucket_operations(action, data, user_input) {
         const bucket_filters = _.pick(user_input, LIST_BUCKET_FILTERS);
         const wide = get_boolean_or_string_value(user_input.wide);
         const buckets = await list_config_files(TYPES.BUCKET, buckets_dir_path, wide, undefined, bucket_filters);
-        write_stdout_response(ManageCLIResponse.BucketList, buckets);
+        write_stdout_response(NooBaaCLIResponse.BucketList, buckets);
     } else {
         // we should not get here (we check it before)
-        throw_cli_error(ManageCLIError.InvalidAction);
+        throw_cli_error(NooBaaCLIError.InvalidAction);
     }
 }
 
@@ -416,12 +416,12 @@ async function fetch_existing_account_data(target) {
         source = await get_config_data(account_path, true);
         source.access_keys = await nc_mkm.decrypt_access_keys(source);
     } catch (err) {
-        dbg.log1('NSFS Manage command: Could not find account', target, err);
+        dbg.log1('NooBaa CLI command: Could not find account', target, err);
         if (err.code === 'ENOENT') {
             if (_.isUndefined(target.name)) {
-                throw_cli_error(ManageCLIError.NoSuchAccountAccessKey, target.access_keys[0].access_key);
+                throw_cli_error(NooBaaCLIError.NoSuchAccountAccessKey, target.access_keys[0].access_key);
             } else {
-                throw_cli_error(ManageCLIError.NoSuchAccountName, target.name);
+                throw_cli_error(NooBaaCLIError.NoSuchAccountName, target.name);
             }
         }
         throw err;
@@ -444,7 +444,7 @@ async function add_account(data) {
 
     const event_arg = data.name ? data.name : access_key;
     if (name_exists || access_key_exists) {
-        const err_code = name_exists ? ManageCLIError.AccountNameAlreadyExists : ManageCLIError.AccountAccessKeyAlreadyExists;
+        const err_code = name_exists ? NooBaaCLIError.AccountNameAlreadyExists : NooBaaCLIError.AccountAccessKeyAlreadyExists;
         throw_cli_error(err_code, event_arg, {account: event_arg});
     }
     data._id = mongo_utils.mongoObjectId();
@@ -458,7 +458,7 @@ async function add_account(data) {
     await native_fs_utils.create_config_file(fs_context, accounts_dir_path, account_config_path, encrypted_data);
     await native_fs_utils._create_path(access_keys_dir_path, fs_context, config.BASE_MODE_CONFIG_DIR);
     await nb_native().fs.symlink(fs_context, account_config_relative_path, account_config_access_key_path);
-    write_stdout_response(ManageCLIResponse.AccountCreated, data, { account: event_arg });
+    write_stdout_response(NooBaaCLIResponse.AccountCreated, data, { account: event_arg });
 }
 
 
@@ -482,7 +482,7 @@ async function update_account(data) {
         // for validating against the schema we need an object, hence we parse it back to object
         nsfs_schema_utils.validate_account_schema(JSON.parse(encrypted_data));
         await native_fs_utils.update_config_file(fs_context, accounts_dir_path, account_config_path, encrypted_data);
-        write_stdout_response(ManageCLIResponse.AccountUpdated, data);
+        write_stdout_response(NooBaaCLIResponse.AccountUpdated, data);
         return;
     }
     const data_name = new_name || cur_name;
@@ -497,7 +497,7 @@ async function update_account(data) {
     const name_exists = update_name && await native_fs_utils.is_path_exists(fs_context, new_account_config_path);
     const access_key_exists = update_access_key && await native_fs_utils.is_path_exists(fs_context, new_access_key_config_path, true);
     if (name_exists || access_key_exists) {
-        const err_code = name_exists ? ManageCLIError.AccountNameAlreadyExists : ManageCLIError.AccountAccessKeyAlreadyExists;
+        const err_code = name_exists ? NooBaaCLIError.AccountNameAlreadyExists : NooBaaCLIError.AccountAccessKeyAlreadyExists;
         throw_cli_error(err_code);
     }
     data = _.omit(data, ['new_name', 'new_access_key']);
@@ -521,7 +521,7 @@ async function update_account(data) {
     // handle atomicity for symlinks
     await nb_native().fs.unlink(fs_context, cur_access_key_config_path);
     await nb_native().fs.symlink(fs_context, new_account_relative_config_path, new_access_key_config_path);
-    write_stdout_response(ManageCLIResponse.AccountUpdated, data);
+    write_stdout_response(NooBaaCLIResponse.AccountUpdated, data);
 }
 
 async function delete_account(data) {
@@ -534,7 +534,7 @@ async function delete_account(data) {
 
     await native_fs_utils.delete_config_file(fs_context, accounts_dir_path, account_config_path);
     await nb_native().fs.unlink(fs_context, access_key_config_path);
-    write_stdout_response(ManageCLIResponse.AccountDeleted, '', {account: data.name});
+    write_stdout_response(NooBaaCLIResponse.AccountDeleted, '', {account: data.name});
 }
 
 /**
@@ -551,7 +551,7 @@ async function verify_delete_account(account_name) {
             const data = await get_config_data(full_path);
             if (data.bucket_owner === account_name) {
                 const detail_msg = `Account ${account_name} has bucket ${data.name}`;
-                throw_cli_error(ManageCLIError.AccountDeleteForbiddenHasBuckets, detail_msg);
+                throw_cli_error(NooBaaCLIError.AccountDeleteForbiddenHasBuckets, detail_msg);
             }
             return data;
         }
@@ -566,12 +566,12 @@ async function get_account_status(data, show_secrets) {
             get_config_file_path(accounts_dir_path, data.name);
         const config_data = await get_config_data(account_path, show_secrets);
         if (config_data.access_keys) config_data.access_keys = await nc_mkm.decrypt_access_keys(config_data);
-        write_stdout_response(ManageCLIResponse.AccountStatus, config_data);
+        write_stdout_response(NooBaaCLIResponse.AccountStatus, config_data);
     } catch (err) {
         if (_.isUndefined(data.name)) {
-            throw_cli_error(ManageCLIError.NoSuchAccountAccessKey, data.access_keys[0].access_key.unwrap());
+            throw_cli_error(NooBaaCLIError.NoSuchAccountAccessKey, data.access_keys[0].access_key.unwrap());
         } else {
-            throw_cli_error(ManageCLIError.NoSuchAccountName, data.name);
+            throw_cli_error(NooBaaCLIError.NoSuchAccountName, data.name);
         }
     }
 }
@@ -589,10 +589,10 @@ async function manage_account_operations(action, data, show_secrets, user_input)
         const account_filters = _.pick(user_input, LIST_ACCOUNT_FILTERS);
         const wide = get_boolean_or_string_value(user_input.wide);
         const accounts = await list_config_files(TYPES.ACCOUNT, accounts_dir_path, wide, show_secrets, account_filters);
-        write_stdout_response(ManageCLIResponse.AccountList, accounts);
+        write_stdout_response(NooBaaCLIResponse.AccountList, accounts);
     } else {
         // we should not get here (we check it before)
-        throw_cli_error(ManageCLIError.InvalidAction);
+        throw_cli_error(NooBaaCLIError.InvalidAction);
     }
 }
 
@@ -703,8 +703,8 @@ async function get_options_from_file(file_path) {
         const input_options_with_data = await native_fs_utils.read_file(fs_context, file_path);
         return input_options_with_data;
     } catch (err) {
-        if (err.code === 'ENOENT') throw_cli_error(ManageCLIError.InvalidFilePath, file_path);
-        if (err instanceof SyntaxError) throw_cli_error(ManageCLIError.InvalidJSONFile, file_path);
+        if (err.code === 'ENOENT') throw_cli_error(NooBaaCLIError.InvalidFilePath, file_path);
+        if (err instanceof SyntaxError) throw_cli_error(NooBaaCLIError.InvalidJSONFile, file_path);
         throw err;
     }
 }
@@ -747,45 +747,45 @@ function get_access_keys(action, user_input) {
  */
 async function validate_bucket_args(data, action) {
     if (action === ACTIONS.DELETE || action === ACTIONS.STATUS) {
-        if (_.isUndefined(data.name)) throw_cli_error(ManageCLIError.MissingBucketNameFlag);
+        if (_.isUndefined(data.name)) throw_cli_error(NooBaaCLIError.MissingBucketNameFlag);
     } else { // action === ACTIONS.ADD || action === ACTIONS.UPDATE
-        if (_.isUndefined(data.name)) throw_cli_error(ManageCLIError.MissingBucketNameFlag);
+        if (_.isUndefined(data.name)) throw_cli_error(NooBaaCLIError.MissingBucketNameFlag);
         try {
             native_fs_utils.validate_bucket_creation({ name: data.name });
         } catch (err) {
-            throw_cli_error(ManageCLIError.InvalidBucketName, data.name);
+            throw_cli_error(NooBaaCLIError.InvalidBucketName, data.name);
         }
         if (!_.isUndefined(data.new_name)) {
-            if (action !== ACTIONS.UPDATE) throw_cli_error(ManageCLIError.InvalidNewNameBucketIdentifier);
+            if (action !== ACTIONS.UPDATE) throw_cli_error(NooBaaCLIError.InvalidNewNameBucketIdentifier);
             try {
                 native_fs_utils.validate_bucket_creation({ name: data.new_name });
             } catch (err) {
-                throw_cli_error(ManageCLIError.InvalidBucketName, data.new_name);
+                throw_cli_error(NooBaaCLIError.InvalidBucketName, data.new_name);
             }
         }
-        if (_.isUndefined(data.system_owner)) throw_cli_error(ManageCLIError.MissingBucketOwnerFlag);
-        if (!data.path) throw_cli_error(ManageCLIError.MissingBucketPathFlag);
+        if (_.isUndefined(data.system_owner)) throw_cli_error(NooBaaCLIError.MissingBucketOwnerFlag);
+        if (!data.path) throw_cli_error(NooBaaCLIError.MissingBucketPathFlag);
         // fs_backend='' used for deletion of the fs_backend property
         if (data.fs_backend !== undefined && !['GPFS', 'CEPH_FS', 'NFSv4'].includes(data.fs_backend)) {
-            throw_cli_error(ManageCLIError.InvalidFSBackend);
+            throw_cli_error(NooBaaCLIError.InvalidFSBackend);
         }
         // in case we have the fs_backend it changes the fs_context that we use for the path
         const fs_context_fs_backend = native_fs_utils.get_process_fs_context(data.fs_backend);
         const exists = await native_fs_utils.is_path_exists(fs_context_fs_backend, data.path);
         if (!exists) {
-            throw_cli_error(ManageCLIError.InvalidStoragePath, data.path);
+            throw_cli_error(NooBaaCLIError.InvalidStoragePath, data.path);
         }
         const account = await get_bucket_owner_account(data.bucket_owner);
         const account_fs_context = await native_fs_utils.get_fs_context(account.nsfs_account_config, data.fs_backend);
         const accessible = await native_fs_utils.is_dir_rw_accessible(account_fs_context, data.path);
         if (!accessible) {
-            throw_cli_error(ManageCLIError.InaccessibleStoragePath, data.path);
+            throw_cli_error(NooBaaCLIError.InaccessibleStoragePath, data.path);
         }
         if (action === ACTIONS.ADD) {
             if (!account.allow_bucket_creation) {
                 const detail_msg = `${data.bucket_owner} account not allowed to create new buckets. ` +
                 `Please make sure to have a valid new_buckets_path and enable the flag allow_bucket_creation`;
-                throw_cli_error(ManageCLIError.BucketCreationNotAllowed, detail_msg);
+                throw_cli_error(NooBaaCLIError.BucketCreationNotAllowed, detail_msg);
         }
             data.owner_account = account._id; // TODO move this assignment to better place
         }
@@ -804,7 +804,7 @@ async function validate_bucket_args(data, action) {
                     });
             } catch (err) {
                 dbg.error('validate_bucket_args invalid bucket policy err:', err);
-                throw_cli_error(ManageCLIError.MalformedPolicy, data.s3_policy);
+                throw_cli_error(NooBaaCLIError.MalformedPolicy, data.s3_policy);
             }
         }
     }
@@ -818,27 +818,27 @@ async function validate_bucket_args(data, action) {
 async function validate_account_args(data, action) {
     if (action === ACTIONS.STATUS || action === ACTIONS.DELETE) {
         if (_.isUndefined(data.access_keys[0].access_key) && _.isUndefined(data.name)) {
-            throw_cli_error(ManageCLIError.MissingIdentifier);
+            throw_cli_error(NooBaaCLIError.MissingIdentifier);
         }
     } else {
-        if ((action !== ACTIONS.UPDATE && data.new_name)) throw_cli_error(ManageCLIError.InvalidNewNameAccountIdentifier);
-        if ((action !== ACTIONS.UPDATE && data.new_access_key)) throw_cli_error(ManageCLIError.InvalidNewAccessKeyIdentifier);
-        if (_.isUndefined(data.name)) throw_cli_error(ManageCLIError.MissingAccountNameFlag);
+        if ((action !== ACTIONS.UPDATE && data.new_name)) throw_cli_error(NooBaaCLIError.InvalidNewNameAccountIdentifier);
+        if ((action !== ACTIONS.UPDATE && data.new_access_key)) throw_cli_error(NooBaaCLIError.InvalidNewAccessKeyIdentifier);
+        if (_.isUndefined(data.name)) throw_cli_error(NooBaaCLIError.MissingAccountNameFlag);
 
-        if (_.isUndefined(data.access_keys[0].secret_key)) throw_cli_error(ManageCLIError.MissingAccountSecretKeyFlag);
-        if (_.isUndefined(data.access_keys[0].access_key)) throw_cli_error(ManageCLIError.MissingAccountAccessKeyFlag);
+        if (_.isUndefined(data.access_keys[0].secret_key)) throw_cli_error(NooBaaCLIError.MissingAccountSecretKeyFlag);
+        if (_.isUndefined(data.access_keys[0].access_key)) throw_cli_error(NooBaaCLIError.MissingAccountAccessKeyFlag);
         if (data.nsfs_account_config.gid && data.nsfs_account_config.uid === undefined) {
-            throw_cli_error(ManageCLIError.MissingAccountNSFSConfigUID, data.nsfs_account_config);
+            throw_cli_error(NooBaaCLIError.MissingAccountNSFSConfigUID, data.nsfs_account_config);
         }
         if (data.nsfs_account_config.uid && data.nsfs_account_config.gid === undefined) {
-            throw_cli_error(ManageCLIError.MissingAccountNSFSConfigGID, data.nsfs_account_config);
+            throw_cli_error(NooBaaCLIError.MissingAccountNSFSConfigGID, data.nsfs_account_config);
         }
         if ((_.isUndefined(data.nsfs_account_config.distinguished_name) &&
                 (data.nsfs_account_config.uid === undefined || data.nsfs_account_config.gid === undefined))) {
-            throw_cli_error(ManageCLIError.InvalidAccountNSFSConfig, data.nsfs_account_config);
+            throw_cli_error(NooBaaCLIError.InvalidAccountNSFSConfig, data.nsfs_account_config);
         }
         if (!_.isUndefined(data.nsfs_account_config.fs_backend) && !['GPFS', 'CEPH_FS', 'NFSv4'].includes(data.nsfs_account_config.fs_backend)) {
-            throw_cli_error(ManageCLIError.InvalidFSBackend);
+            throw_cli_error(NooBaaCLIError.InvalidFSBackend);
         }
 
         if (_.isUndefined(data.nsfs_account_config.new_buckets_path)) {
@@ -848,12 +848,12 @@ async function validate_account_args(data, action) {
         const fs_context_fs_backend = native_fs_utils.get_process_fs_context(data.fs_backend);
         const exists = await native_fs_utils.is_path_exists(fs_context_fs_backend, data.nsfs_account_config.new_buckets_path);
         if (!exists) {
-            throw_cli_error(ManageCLIError.InvalidAccountNewBucketsPath, data.nsfs_account_config.new_buckets_path);
+            throw_cli_error(NooBaaCLIError.InvalidAccountNewBucketsPath, data.nsfs_account_config.new_buckets_path);
         }
         const account_fs_context = await native_fs_utils.get_fs_context(data.nsfs_account_config, data.fs_backend);
         const accessible = await native_fs_utils.is_dir_rw_accessible(account_fs_context, data.nsfs_account_config.new_buckets_path);
         if (!accessible) {
-            throw_cli_error(ManageCLIError.InaccessibleAccountNewBucketsPath, data.nsfs_account_config.new_buckets_path);
+            throw_cli_error(NooBaaCLIError.InaccessibleAccountNewBucketsPath, data.nsfs_account_config.new_buckets_path);
         }
     }
 }
@@ -884,7 +884,7 @@ async function validate_input_types(type, action, argv) {
         const input_options_from_file = Object.keys(input_options_with_data_from_file);
         if (input_options_from_file.includes(FROM_FILE)) {
             const details = `${FROM_FILE} should not be passed inside json options`;
-            throw_cli_error(ManageCLIError.InvalidArgument, details);
+            throw_cli_error(NooBaaCLIError.InvalidArgument, details);
         }
         validate_no_extra_options(type, action, input_options_from_file, true);
         validate_options_type_by_value(input_options_with_data_from_file);
@@ -898,13 +898,13 @@ async function validate_input_types(type, action, argv) {
  * @param {string} action
  */
 function validate_type_and_action(type, action) {
-    if (!Object.values(TYPES).includes(type)) throw_cli_error(ManageCLIError.InvalidType);
+    if (!Object.values(TYPES).includes(type)) throw_cli_error(NooBaaCLIError.InvalidType);
     if (type === TYPES.ACCOUNT || type === TYPES.BUCKET) {
-        if (!Object.values(ACTIONS).includes(action)) throw_cli_error(ManageCLIError.InvalidAction);
+        if (!Object.values(ACTIONS).includes(action)) throw_cli_error(NooBaaCLIError.InvalidAction);
     } else if (type === TYPES.IP_WHITELIST) {
-        if (action !== '') throw_cli_error(ManageCLIError.InvalidAction);
+        if (action !== '') throw_cli_error(NooBaaCLIError.InvalidAction);
     } else if (type === TYPES.GLACIER) {
-        if (!Object.values(GLACIER_ACTIONS).includes(action)) throw_cli_error(ManageCLIError.InvalidAction);
+        if (!Object.values(GLACIER_ACTIONS).includes(action)) throw_cli_error(NooBaaCLIError.InvalidAction);
     }
 }
 
@@ -947,7 +947,7 @@ function validate_no_extra_options(type, action, input_options, is_options_from_
         const supported_option_msg = `Supported options are: ${[...valid_options].join(', ')}`;
         let details = `${invalid_option_msg} for ${type_and_action}. ${supported_option_msg}`;
         if (from_file_condition) details += ` (when using ${FROM_FILE} flag only partial list of flags are supported)`;
-        throw_cli_error(ManageCLIError.InvalidArgument, details);
+        throw_cli_error(NooBaaCLIError.InvalidArgument, details);
     }
 }
 /**
@@ -976,7 +976,7 @@ function validate_options_type_by_value(input_options_with_data) {
                 continue;
             }
             const details = `type of flag ${option} should be ${type_of_option}`;
-            throw_cli_error(ManageCLIError.InvalidArgumentType, details);
+            throw_cli_error(NooBaaCLIError.InvalidArgumentType, details);
         }
     }
 }
@@ -990,7 +990,7 @@ function validate_boolean_string_value(value) {
     if (value && typeof value === 'string') {
         const check_allowed_boolean_value = BOOLEAN_STRING_VALUES.includes(value.toLowerCase());
         if (!check_allowed_boolean_value) {
-            throw_cli_error(ManageCLIError.InvalidBooleanValue);
+            throw_cli_error(NooBaaCLIError.InvalidBooleanValue);
         }
         return true;
     }
@@ -1008,14 +1008,14 @@ function validate_min_flags_for_update(type, input_options_with_data) {
 
     // GAP - mandatory flags check should be earlier in the calls in general
     if (_.isUndefined(input_options_with_data.name)) {
-        if (type === TYPES.ACCOUNT) throw_cli_error(ManageCLIError.MissingAccountNameFlag);
-        if (type === TYPES.BUCKET) throw_cli_error(ManageCLIError.MissingBucketNameFlag);
+        if (type === TYPES.ACCOUNT) throw_cli_error(NooBaaCLIError.MissingAccountNameFlag);
+        if (type === TYPES.BUCKET) throw_cli_error(NooBaaCLIError.MissingBucketNameFlag);
     }
 
     const flags_for_update = input_options.filter(option => !config_and_identifier_options.includes(option));
     if (flags_for_update.length === 0 ||
         (flags_for_update.length === 1 && input_options_with_data.regenerate === 'false')) {
-            throw_cli_error(ManageCLIError.MissingUpdateProperty);
+            throw_cli_error(NooBaaCLIError.MissingUpdateProperty);
         }
 }
 
@@ -1037,20 +1037,20 @@ async function whitelist_ips_management(args) {
         const data = JSON.stringify(config_data);
         await native_fs_utils.update_config_file(fs_context, config_root, config_path, data);
     } catch (err) {
-        dbg.error('manage_nsfs.whitelist_ips_management: Error while updation config.json,  path ' + config_path, err);
-        throw_cli_error(ManageCLIError.WhiteListIPUpdateFailed, config_path);
+        dbg.error('noobaa_cli.whitelist_ips_management: Error while updation config.json,  path ' + config_path, err);
+        throw_cli_error(NooBaaCLIError.WhiteListIPUpdateFailed, config_path);
     }
-    write_stdout_response(ManageCLIResponse.WhiteListIPUpdated, ips);
+    write_stdout_response(NooBaaCLIResponse.WhiteListIPUpdated, ips);
 }
 
 function validate_whitelist_arg(ips) {
     if (!ips || ips === true) {
-        throw_cli_error(ManageCLIError.MissingWhiteListIPFlag);
+        throw_cli_error(NooBaaCLIError.MissingWhiteListIPFlag);
     }
     try {
         JSON.parse(ips);
     } catch (err) {
-        throw_cli_error(ManageCLIError.InvalidWhiteListIPFormat);
+        throw_cli_error(NooBaaCLIError.InvalidWhiteListIPFormat);
     }
 }
 
@@ -1058,7 +1058,7 @@ function verify_whitelist_ips(ips_to_validate) {
     for (const ip_to_validate of ips_to_validate) {
         if (net.isIP(ip_to_validate) === 0) {
             const detail_msg = `IP address list has an invalid IP address ${ip_to_validate}`;
-            throw_cli_error(ManageCLIError.InvalidWhiteListIPFormat, detail_msg);
+            throw_cli_error(NooBaaCLIError.InvalidWhiteListIPFormat, detail_msg);
         }
     }
 }
@@ -1066,10 +1066,10 @@ function verify_whitelist_ips(ips_to_validate) {
 function _validate_access_keys(access_key, secret_key) {
     // using the access_key flag requires also using the secret_key flag
     if (!_.isUndefined(access_key) && _.isUndefined(secret_key)) {
-        throw_cli_error(ManageCLIError.MissingAccountSecretKeyFlag);
+        throw_cli_error(NooBaaCLIError.MissingAccountSecretKeyFlag);
     }
     if (!_.isUndefined(secret_key) && _.isUndefined(access_key)) {
-        throw_cli_error(ManageCLIError.MissingAccountAccessKeyFlag);
+        throw_cli_error(NooBaaCLIError.MissingAccountAccessKeyFlag);
     }
     // checking the complexity of access_key
     if (!_.isUndefined(access_key) && !string_utils.validate_complexity(access_key, {
@@ -1078,7 +1078,7 @@ function _validate_access_keys(access_key, secret_key) {
             check_lowercase: false,
             check_numbers: true,
             check_symbols: false,
-        })) throw_cli_error(ManageCLIError.AccountAccessKeyFlagComplexity);
+        })) throw_cli_error(NooBaaCLIError.AccountAccessKeyFlagComplexity);
     // checking the complexity of secret_key
     if (!_.isUndefined(secret_key) && !string_utils.validate_complexity(secret_key, {
             require_length: 40,
@@ -1086,7 +1086,7 @@ function _validate_access_keys(access_key, secret_key) {
             check_lowercase: true,
             check_numbers: true,
             check_symbols: true,
-        })) throw_cli_error(ManageCLIError.AccountSecretKeyFlagComplexity);
+        })) throw_cli_error(NooBaaCLIError.AccountSecretKeyFlagComplexity);
 
 }
 
@@ -1115,16 +1115,16 @@ async function glacier_management(argv) {
 async function manage_glacier_operations(action, argv) {
     switch (action) {
         case GLACIER_ACTIONS.MIGRATE:
-            await manage_nsfs_glacier.process_migrations();
+            await noobaa_cli_glacier.process_migrations();
             break;
         case GLACIER_ACTIONS.RESTORE:
-            await manage_nsfs_glacier.process_restores();
+            await noobaa_cli_glacier.process_restores();
             break;
         case GLACIER_ACTIONS.EXPIRY:
-            await manage_nsfs_glacier.process_expiry();
+            await noobaa_cli_glacier.process_expiry();
             break;
         default:
-            throw_cli_error(ManageCLIError.InvalidGlacierOperation);
+            throw_cli_error(NooBaaCLIError.InvalidGlacierOperation);
     }
 }
 

@@ -12,21 +12,21 @@ const fs_utils = require('../../../util/fs_utils');
 const config_module = require('../../../../config');
 const nb_native = require('../../../util/nb_native');
 const { set_path_permissions_and_owner, TMP_PATH, generate_s3_policy } = require('../../system_tests/test_utils');
-const { ACTIONS, TYPES, CONFIG_SUBDIRS } = require('../../../manage_nsfs/manage_nsfs_constants');
+const { ACTIONS, TYPES, CONFIG_SUBDIRS } = require('../../../noobaa_nc/noobaa_nc_constants');
 const { get_process_fs_context, is_path_exists } = require('../../../util/native_fs_utils');
-const ManageCLIError = require('../../../manage_nsfs/manage_nsfs_cli_errors').ManageCLIError;
-const { ManageCLIResponse } = require('../../../manage_nsfs/manage_nsfs_cli_responses');
+const NooBaaCLIError = require('../../../noobaa_nc/noobaa_nc_cli_errors').NooBaaCLIError;
+const { NooBaaCLIResponse } = require('../../../noobaa_nc/noobaa_nc_cli_responses');
 
 const tmp_fs_path = path.join(TMP_PATH, 'test_nc_nsfs_bucket_cli');
 const DEFAULT_FS_CONFIG = get_process_fs_context();
 
 // eslint-disable-next-line max-lines-per-function
-describe('manage nsfs cli bucket flow', () => {
+describe('noobaa cli bucket flow', () => {
 
     describe('cli create bucket', () => {
-        const config_root = path.join(tmp_fs_path, 'config_root_manage_nsfs');
-        const root_path = path.join(tmp_fs_path, 'root_path_manage_nsfs/');
-        const bucket_storage_path = path.join(tmp_fs_path, 'root_path_manage_nsfs', 'bucket1');
+        const config_root = path.join(tmp_fs_path, 'config_root_noobaa_cli');
+        const root_path = path.join(tmp_fs_path, 'root_path_noobaa_cli/');
+        const bucket_storage_path = path.join(tmp_fs_path, 'root_path_noobaa_cli', 'bucket1');
 
         const account_defaults = {
             name: 'account_test',
@@ -54,7 +54,7 @@ describe('manage nsfs cli bucket flow', () => {
             await fs_utils.create_fresh_path(account_path);
             await fs_utils.file_must_exist(account_path);
             await set_path_permissions_and_owner(account_path, account_options, 0o700);
-            await exec_manage_cli(TYPES.ACCOUNT, action, account_options);
+            await exec_noobaa_cli(TYPES.ACCOUNT, action, account_options);
         });
 
         afterEach(async () => {
@@ -66,16 +66,16 @@ describe('manage nsfs cli bucket flow', () => {
             const action = ACTIONS.ADD;
             const path_invalid = 4e34; // invalid should be string represents a path
             const bucket_options = { config_root, ...bucket_defaults, path: path_invalid };
-            const res = await exec_manage_cli(TYPES.BUCKET, action, bucket_options);
-            expect(JSON.parse(res.stdout).error.message).toBe(ManageCLIError.InvalidArgumentType.message);
+            const res = await exec_noobaa_cli(TYPES.BUCKET, action, bucket_options);
+            expect(JSON.parse(res.stdout).error.message).toBe(NooBaaCLIError.InvalidArgumentType.message);
         });
 
         it('should fail - cli create bucket - invalid option type (path as string)', async () => {
             const action = ACTIONS.ADD;
             const path_invalid = 'aaa'; // invalid should be string represents a path
             const bucket_options = { config_root, ...bucket_defaults, path: path_invalid };
-            const res = await exec_manage_cli(TYPES.BUCKET, action, bucket_options);
-            expect(JSON.parse(res.stdout).error.message).toBe(ManageCLIError.InvalidStoragePath.message);
+            const res = await exec_noobaa_cli(TYPES.BUCKET, action, bucket_options);
+            expect(JSON.parse(res.stdout).error.message).toBe(NooBaaCLIError.InvalidStoragePath.message);
         });
 
         it('cli create bucket use flag force_md5_etag', async () => {
@@ -85,7 +85,7 @@ describe('manage nsfs cli bucket flow', () => {
             await fs_utils.create_fresh_path(bucket_options.path);
             await fs_utils.file_must_exist(bucket_options.path);
             await set_path_permissions_and_owner(bucket_options.path, account_defaults, 0o700);
-            await exec_manage_cli(TYPES.BUCKET, action, bucket_options);
+            await exec_noobaa_cli(TYPES.BUCKET, action, bucket_options);
             const bucket = await read_config_file(config_root, CONFIG_SUBDIRS.BUCKETS, bucket_defaults.name);
             expect(bucket.force_md5_etag).toBe(true);
         });
@@ -96,8 +96,8 @@ describe('manage nsfs cli bucket flow', () => {
             await fs_utils.create_fresh_path(bucket_options.path);
             await fs_utils.file_must_exist(bucket_options.path);
             await set_path_permissions_and_owner(bucket_options.path, account_defaults, 0o077);
-            const res = await exec_manage_cli(TYPES.BUCKET, action, bucket_options);
-            expect(JSON.parse(res.stdout).error.code).toBe(ManageCLIError.InaccessibleStoragePath.code);
+            const res = await exec_noobaa_cli(TYPES.BUCKET, action, bucket_options);
+            expect(JSON.parse(res.stdout).error.code).toBe(NooBaaCLIError.InaccessibleStoragePath.code);
         });
 
         it('should fail - cli create bucket - owner does not have write permission to path', async () => {
@@ -106,8 +106,8 @@ describe('manage nsfs cli bucket flow', () => {
             await fs_utils.create_fresh_path(bucket_options.path);
             await fs_utils.file_must_exist(bucket_options.path);
             await set_path_permissions_and_owner(bucket_options.path, account_defaults, 0o477);
-            const res = await exec_manage_cli(TYPES.BUCKET, action, bucket_options);
-            expect(JSON.parse(res.stdout).error.code).toBe(ManageCLIError.InaccessibleStoragePath.code);
+            const res = await exec_noobaa_cli(TYPES.BUCKET, action, bucket_options);
+            expect(JSON.parse(res.stdout).error.code).toBe(NooBaaCLIError.InaccessibleStoragePath.code);
         });
 
         it('should fail - cli create bucket - owner does not have read permission to path', async () => {
@@ -116,8 +116,8 @@ describe('manage nsfs cli bucket flow', () => {
             await fs_utils.create_fresh_path(bucket_options.path);
             await fs_utils.file_must_exist(bucket_options.path);
             await set_path_permissions_and_owner(bucket_options.path, account_defaults, 0o277);
-            const res = await exec_manage_cli(TYPES.BUCKET, action, bucket_options);
-            expect(JSON.parse(res.stdout).error.code).toBe(ManageCLIError.InaccessibleStoragePath.code);
+            const res = await exec_noobaa_cli(TYPES.BUCKET, action, bucket_options);
+            expect(JSON.parse(res.stdout).error.code).toBe(NooBaaCLIError.InaccessibleStoragePath.code);
         });
 
         it('cli create bucket - account can access path', async () => {
@@ -126,7 +126,7 @@ describe('manage nsfs cli bucket flow', () => {
             await fs_utils.create_fresh_path(bucket_options.path);
             await fs_utils.file_must_exist(bucket_options.path);
             await set_path_permissions_and_owner(bucket_options.path, account_defaults, 0o700);
-            await exec_manage_cli(TYPES.BUCKET, action, bucket_options);
+            await exec_noobaa_cli(TYPES.BUCKET, action, bucket_options);
             const bucket = await read_config_file(config_root, CONFIG_SUBDIRS.BUCKETS, bucket_defaults.name);
             assert_bucket(bucket, bucket_options);
         });
@@ -135,9 +135,9 @@ describe('manage nsfs cli bucket flow', () => {
 
 
     describe('cli delete bucket', () => {
-        const config_root = path.join(tmp_fs_path, 'config_root_manage_nsfs2');
-        const root_path = path.join(tmp_fs_path, 'root_path_manage_nsfs2/');
-        const bucket_storage_path = path.join(tmp_fs_path, 'root_path_manage_nsfs2', 'bucket1');
+        const config_root = path.join(tmp_fs_path, 'config_root_noobaa_cli2');
+        const root_path = path.join(tmp_fs_path, 'root_path_noobaa_cli2/');
+        const bucket_storage_path = path.join(tmp_fs_path, 'root_path_noobaa_cli2', 'bucket1');
         let bucket_temp_dir_path;
 
         const account_name = 'account_test';
@@ -167,7 +167,7 @@ describe('manage nsfs cli bucket flow', () => {
             await fs_utils.create_fresh_path(account_path);
             await fs_utils.file_must_exist(account_path);
             await set_path_permissions_and_owner(account_path, account_options, 0o700);
-            await exec_manage_cli(TYPES.ACCOUNT, action, account_options);
+            await exec_noobaa_cli(TYPES.ACCOUNT, action, account_options);
 
             //bucket add
             const { path: bucket_path } = bucket_defaults;
@@ -175,7 +175,7 @@ describe('manage nsfs cli bucket flow', () => {
             await fs_utils.create_fresh_path(bucket_path);
             await fs_utils.file_must_exist(bucket_path);
             await set_path_permissions_and_owner(bucket_path, account_options, 0o700);
-            const resp = await exec_manage_cli(TYPES.BUCKET, action, bucket_options);
+            const resp = await exec_noobaa_cli(TYPES.BUCKET, action, bucket_options);
             const bucket_resp = JSON.parse(resp);
             expect(bucket_resp.response.reply._id).not.toBeNull();
             //create temp dir
@@ -194,7 +194,7 @@ describe('manage nsfs cli bucket flow', () => {
         it('cli list filter by name (bucket2) - empty result', async () => {
             const bucket_options = { config_root, name: 'bucket2' };
             const action = ACTIONS.LIST;
-            const res = await exec_manage_cli(TYPES.BUCKET, action, bucket_options);
+            const res = await exec_noobaa_cli(TYPES.BUCKET, action, bucket_options);
             expect(JSON.parse(res).response.reply.map(item => item.name))
                 .toEqual(expect.arrayContaining([]));
         });
@@ -202,7 +202,7 @@ describe('manage nsfs cli bucket flow', () => {
         it('cli list filter by name (bucket1)', async () => {
             const bucket_options = { config_root, name: 'bucket1' };
             const action = ACTIONS.LIST;
-            const res = await exec_manage_cli(TYPES.BUCKET, action, bucket_options);
+            const res = await exec_noobaa_cli(TYPES.BUCKET, action, bucket_options);
             expect(JSON.parse(res).response.reply.map(item => item.name))
                 .toEqual(expect.arrayContaining(['bucket1']));
         });
@@ -212,7 +212,7 @@ describe('manage nsfs cli bucket flow', () => {
             expect(path_exists).toBe(true);
             const bucket_options = { config_root, name: 'bucket1'};
             const action = ACTIONS.DELETE;
-            await exec_manage_cli(TYPES.BUCKET, action, bucket_options);
+            await exec_noobaa_cli(TYPES.BUCKET, action, bucket_options);
             path_exists = await is_path_exists(DEFAULT_FS_CONFIG, bucket_temp_dir_path);
             expect(path_exists).toBe(false);
         });
@@ -221,8 +221,8 @@ describe('manage nsfs cli bucket flow', () => {
             //here a dummy file is creating in bucket storage location(bucket_defaults.path) 
             await create_json_file(bucket_defaults.path, 'test.json', {test: 'data'});
             const delete_bucket_options = { config_root, name: bucket_defaults.name, force: true};
-            const resp = await exec_manage_cli(TYPES.BUCKET, ACTIONS.DELETE, delete_bucket_options);
-            expect(JSON.parse(resp.trim()).response.code).toBe(ManageCLIResponse.BucketDeleted.code);
+            const resp = await exec_noobaa_cli(TYPES.BUCKET, ACTIONS.DELETE, delete_bucket_options);
+            expect(JSON.parse(resp.trim()).response.code).toBe(NooBaaCLIResponse.BucketDeleted.code);
             const config_path = path.join(config_root, CONFIG_SUBDIRS.BUCKETS, bucket_defaults.name + '.json');
             await fs_utils.file_must_not_exist(config_path);
         });
@@ -231,8 +231,8 @@ describe('manage nsfs cli bucket flow', () => {
             //here a dummy file is creating in bucket storage location(bucket_defaults.path), 
             await create_json_file(bucket_defaults.path, 'test1.json', {test: 'data'});
             const delete_bucket_options = { config_root, name: bucket_defaults.name};
-            const resp = await exec_manage_cli(TYPES.BUCKET, ACTIONS.DELETE, delete_bucket_options);
-            expect(JSON.parse(resp.stdout).error.code).toBe(ManageCLIError.BucketDeleteForbiddenHasObjects.code);
+            const resp = await exec_noobaa_cli(TYPES.BUCKET, ACTIONS.DELETE, delete_bucket_options);
+            expect(JSON.parse(resp.stdout).error.code).toBe(NooBaaCLIError.BucketDeleteForbiddenHasObjects.code);
             const config_path = path.join(config_root, CONFIG_SUBDIRS.BUCKETS, bucket_defaults.name + '.json');
             await fs_utils.file_must_exist(config_path);
         });
@@ -242,25 +242,25 @@ describe('manage nsfs cli bucket flow', () => {
             await create_json_file(bucket_defaults.path, 'test.json', {test: 'data'});
             // force wth valid string value 'true'
             const delete_bucket_options = { config_root, name: bucket_defaults.name, force: 'true'};
-            const resp = await exec_manage_cli(TYPES.BUCKET, ACTIONS.DELETE, delete_bucket_options);
-            expect(JSON.parse(resp.trim()).response.code).toBe(ManageCLIResponse.BucketDeleted.code);
+            const resp = await exec_noobaa_cli(TYPES.BUCKET, ACTIONS.DELETE, delete_bucket_options);
+            expect(JSON.parse(resp.trim()).response.code).toBe(NooBaaCLIResponse.BucketDeleted.code);
             const config_path = path.join(config_root, CONFIG_SUBDIRS.BUCKETS, bucket_defaults.name + '.json');
             await fs_utils.file_must_not_exist(config_path);
         });
 
         it('should fail - cli delete bucket force flag with invalid boolean string(\'nottrue\')', async () => {
             const delete_bucket_options = { config_root, name: bucket_defaults.name, force: 'nottrue'};
-            const resp = await exec_manage_cli(TYPES.BUCKET, ACTIONS.DELETE, delete_bucket_options);
-            expect(JSON.parse(resp.stdout).error.code).toBe(ManageCLIError.InvalidBooleanValue.code);
+            const resp = await exec_noobaa_cli(TYPES.BUCKET, ACTIONS.DELETE, delete_bucket_options);
+            expect(JSON.parse(resp.stdout).error.code).toBe(NooBaaCLIError.InvalidBooleanValue.code);
         });
     });
 });
 
 describe('cli create bucket using from_file', () => {
     const type = TYPES.BUCKET;
-    const config_root = path.join(tmp_fs_path, 'config_root_manage_nsfs3');
-    const root_path = path.join(tmp_fs_path, 'root_path_manage_nsfs3/');
-    const bucket_storage_path = path.join(tmp_fs_path, 'root_path_manage_nsfs3', 'bucket1');
+    const config_root = path.join(tmp_fs_path, 'config_root_noobaa_cli3');
+    const root_path = path.join(tmp_fs_path, 'root_path_noobaa_cli3/');
+    const bucket_storage_path = path.join(tmp_fs_path, 'root_path_noobaa_cli3', 'bucket1');
     const path_to_json_bucket_options_dir = path.join(tmp_fs_path, 'options');
 
     const account_name = 'account_test';
@@ -289,7 +289,7 @@ describe('cli create bucket using from_file', () => {
         await fs_utils.create_fresh_path(account_path);
         await fs_utils.file_must_exist(account_path);
         await set_path_permissions_and_owner(account_path, account_options, 0o700);
-        await exec_manage_cli(TYPES.ACCOUNT, action, account_options);
+        await exec_noobaa_cli(TYPES.ACCOUNT, action, account_options);
         // give permission on bucket path to bucket owner 
         const { path: bucket_path } = bucket_defaults;
         await fs_utils.create_fresh_path(bucket_path);
@@ -310,7 +310,7 @@ describe('cli create bucket using from_file', () => {
         const path_to_option_json_file_name = await create_json_bucket_options(path_to_json_bucket_options_dir, bucket_options);
         const command_flags = {config_root, from_file: path_to_option_json_file_name};
         // create the bucket and check the details
-        await exec_manage_cli(type, action, command_flags);
+        await exec_noobaa_cli(type, action, command_flags);
         // compare the details
         const bucket = await read_config_file(config_root, CONFIG_SUBDIRS.BUCKETS, bucket_defaults.name);
         assert_bucket(bucket, bucket_options);
@@ -325,7 +325,7 @@ describe('cli create bucket using from_file', () => {
         const path_to_option_json_file_name = await create_json_bucket_options(path_to_json_bucket_options_dir, bucket_options);
         const command_flags = {config_root, from_file: path_to_option_json_file_name};
         // create the bucket and check the details
-        await exec_manage_cli(type, action, command_flags);
+        await exec_noobaa_cli(type, action, command_flags);
         // compare the details
         const bucket = await read_config_file(config_root, CONFIG_SUBDIRS.BUCKETS, bucket_defaults.name);
         assert_bucket(bucket, bucket_options);
@@ -341,7 +341,7 @@ describe('cli create bucket using from_file', () => {
         const path_to_option_json_file_name = await create_json_bucket_options(path_to_json_bucket_options_dir, bucket_options);
         const command_flags = {config_root, from_file: path_to_option_json_file_name};
         // create the bucket and check the details
-        await exec_manage_cli(type, action, command_flags);
+        await exec_noobaa_cli(type, action, command_flags);
         // compare the details
         const bucket = await read_config_file(config_root, CONFIG_SUBDIRS.BUCKETS, bucket_defaults.name);
         assert_bucket(bucket, bucket_options);
@@ -354,8 +354,8 @@ describe('cli create bucket using from_file', () => {
         // write the json_file_options
         const path_to_option_json_file_name = await create_json_bucket_options(path_to_json_bucket_options_dir, bucket_defaults);
         const command_flags = {config_root, from_file: path_to_option_json_file_name, name }; // name should be in file only
-        const res = await exec_manage_cli(type, action, command_flags);
-        expect(JSON.parse(res.stdout).error.code).toBe(ManageCLIError.InvalidArgument.code);
+        const res = await exec_noobaa_cli(type, action, command_flags);
+        expect(JSON.parse(res.stdout).error.code).toBe(NooBaaCLIError.InvalidArgument.code);
     });
 
     it('should fail - cli create bucket using from_file with invalid option (lala) in the file', async () => {
@@ -364,8 +364,8 @@ describe('cli create bucket using from_file', () => {
         // write the json_file_options
         const path_to_option_json_file_name = await create_json_bucket_options(path_to_json_bucket_options_dir, bucket_options);
         const command_flags = {config_root, from_file: path_to_option_json_file_name };
-        const res = await exec_manage_cli(type, action, command_flags);
-        expect(JSON.parse(res.stdout).error.code).toBe(ManageCLIError.InvalidArgument.code);
+        const res = await exec_noobaa_cli(type, action, command_flags);
+        expect(JSON.parse(res.stdout).error.code).toBe(NooBaaCLIError.InvalidArgument.code);
     });
 
     it('should fail - cli create bucket using from_file with invalid option (creation_date) in the file', async () => {
@@ -375,8 +375,8 @@ describe('cli create bucket using from_file', () => {
         // write the json_file_options
         const path_to_option_json_file_name = await create_json_bucket_options(path_to_json_bucket_options_dir, bucket_options);
         const command_flags = {config_root, from_file: path_to_option_json_file_name };
-        const res = await exec_manage_cli(type, action, command_flags);
-        expect(JSON.parse(res.stdout).error.code).toBe(ManageCLIError.InvalidArgument.code);
+        const res = await exec_noobaa_cli(type, action, command_flags);
+        expect(JSON.parse(res.stdout).error.code).toBe(NooBaaCLIError.InvalidArgument.code);
     });
 
     it('should fail - cli create bucket using from_file with from_file inside the JSON file', async () => {
@@ -386,8 +386,8 @@ describe('cli create bucket using from_file', () => {
         // write the json_file_options
         const path_to_option_json_file_name = await create_json_bucket_options(path_to_json_bucket_options_dir, bucket_options);
         const command_flags = {config_root, from_file: path_to_option_json_file_name };
-        const res = await exec_manage_cli(type, action, command_flags);
-        expect(JSON.parse(res.stdout).error.code).toBe(ManageCLIError.InvalidArgument.code);
+        const res = await exec_noobaa_cli(type, action, command_flags);
+        expect(JSON.parse(res.stdout).error.code).toBe(NooBaaCLIError.InvalidArgument.code);
     });
 
     it('should fail - cli create bucket using from_file with invalid option type (in the file)', async () => {
@@ -396,15 +396,15 @@ describe('cli create bucket using from_file', () => {
         // write the json_file_options
         const path_to_option_json_file_name = await create_json_bucket_options(path_to_json_bucket_options_dir, bucket_options);
         const command_flags = {config_root, from_file: path_to_option_json_file_name };
-        const res = await exec_manage_cli(type, action, command_flags);
-        expect(JSON.parse(res.stdout).error.code).toBe(ManageCLIError.InvalidArgumentType.code);
+        const res = await exec_noobaa_cli(type, action, command_flags);
+        expect(JSON.parse(res.stdout).error.code).toBe(NooBaaCLIError.InvalidArgumentType.code);
     });
 
     it('should fail - cli create bucket using from_file with invalid path', async () => {
         const action = ACTIONS.ADD;
         const command_flags = {config_root, from_file: 'blabla'}; //invalid path 
-        const res = await exec_manage_cli(type, action, command_flags);
-        expect(JSON.parse(res.stdout).error.code).toBe(ManageCLIError.InvalidFilePath.code);
+        const res = await exec_noobaa_cli(type, action, command_flags);
+        expect(JSON.parse(res.stdout).error.code).toBe(NooBaaCLIError.InvalidFilePath.code);
     });
 
     it('should fail - cli create bucket using from_file with invalid JSON file', async () => {
@@ -418,18 +418,18 @@ describe('cli create bucket using from_file', () => {
         // write the json_file_options
         const command_flags = {config_root, from_file: path_to_option_json_file_name};
         // create the bucket
-        await exec_manage_cli(type, action, command_flags);
+        await exec_noobaa_cli(type, action, command_flags);
         // compare the details
-        const res = await exec_manage_cli(type, action, command_flags);
-        expect(JSON.parse(res.stdout).error.code).toBe(ManageCLIError.InvalidJSONFile.code);
+        const res = await exec_noobaa_cli(type, action, command_flags);
+        expect(JSON.parse(res.stdout).error.code).toBe(NooBaaCLIError.InvalidJSONFile.code);
     });
 
 });
 
 describe('cli update bucket', () => {
-    const config_root = path.join(tmp_fs_path, 'config_root_manage_nsfs3');
-    const root_path = path.join(tmp_fs_path, 'root_path_manage_nsfs3/');
-    const bucket_storage_path = path.join(tmp_fs_path, 'root_path_manage_nsfs3', 'bucket1');
+    const config_root = path.join(tmp_fs_path, 'config_root_noobaa_cli3');
+    const root_path = path.join(tmp_fs_path, 'root_path_noobaa_cli3/');
+    const bucket_storage_path = path.join(tmp_fs_path, 'root_path_noobaa_cli3', 'bucket1');
 
     const account_name = 'account_test';
     const account_name2 = 'account_test_update2';
@@ -465,7 +465,7 @@ describe('cli update bucket', () => {
         await fs_utils.create_fresh_path(account_path);
         await fs_utils.file_must_exist(account_path);
         await set_path_permissions_and_owner(account_path, account_options, 0o700);
-        await exec_manage_cli(TYPES.ACCOUNT, action, account_options);
+        await exec_noobaa_cli(TYPES.ACCOUNT, action, account_options);
 
         // account add 2
         account_path = account_defaults2.new_buckets_path;
@@ -473,7 +473,7 @@ describe('cli update bucket', () => {
         await fs_utils.create_fresh_path(account_path);
         await fs_utils.file_must_exist(account_path);
         await set_path_permissions_and_owner(account_path, account_options, 0o700);
-        await exec_manage_cli(TYPES.ACCOUNT, action, account_options);
+        await exec_noobaa_cli(TYPES.ACCOUNT, action, account_options);
 
         // bucket add
         const { path: bucket_path } = bucket_defaults;
@@ -481,7 +481,7 @@ describe('cli update bucket', () => {
         await fs_utils.create_fresh_path(bucket_path);
         await fs_utils.file_must_exist(bucket_path);
         await set_path_permissions_and_owner(bucket_path, account_defaults, 0o700);
-        const resp = await exec_manage_cli(TYPES.BUCKET, action, bucket_options);
+        const resp = await exec_noobaa_cli(TYPES.BUCKET, action, bucket_options);
         const bucket_resp = JSON.parse(resp);
         expect(bucket_resp.response.reply._id).not.toBeNull();
     });
@@ -495,12 +495,12 @@ describe('cli update bucket', () => {
         const action = ACTIONS.UPDATE;
         const force_md5_etag = 'true';
         const bucket_options = { config_root, name: bucket_defaults.name, force_md5_etag };
-        await exec_manage_cli(TYPES.BUCKET, action, bucket_options);
+        await exec_noobaa_cli(TYPES.BUCKET, action, bucket_options);
         let bucket_config = await read_config_file(config_root, CONFIG_SUBDIRS.BUCKETS, bucket_defaults.name);
         expect(bucket_config.force_md5_etag).toBe(true);
 
         bucket_options.force_md5_etag = 'false';
-        await exec_manage_cli(TYPES.BUCKET, action, bucket_options);
+        await exec_noobaa_cli(TYPES.BUCKET, action, bucket_options);
         bucket_config = await read_config_file(config_root, CONFIG_SUBDIRS.BUCKETS, bucket_defaults.name);
         expect(bucket_config.force_md5_etag).toBe(false);
     });
@@ -510,14 +510,14 @@ describe('cli update bucket', () => {
         const action = ACTIONS.UPDATE;
         const force_md5_etag = 'true';
         const bucket_options = { config_root, name: bucket_defaults.name, force_md5_etag };
-        await exec_manage_cli(TYPES.BUCKET, action, bucket_options);
+        await exec_noobaa_cli(TYPES.BUCKET, action, bucket_options);
         let bucket_config = await read_config_file(config_root, CONFIG_SUBDIRS.BUCKETS, bucket_defaults.name);
         expect(bucket_config.force_md5_etag).toBe(true);
 
         // unset force_md5_etag
         const empty_string = '\'\'';
         bucket_options.force_md5_etag = empty_string;
-        await exec_manage_cli(TYPES.BUCKET, action, bucket_options);
+        await exec_noobaa_cli(TYPES.BUCKET, action, bucket_options);
         bucket_config = await read_config_file(config_root, CONFIG_SUBDIRS.BUCKETS, bucket_defaults.name);
         expect(bucket_config.force_md5_etag).toBeUndefined();
     });
@@ -525,8 +525,8 @@ describe('cli update bucket', () => {
     it('should fail - cli update bucket without a property to update', async () => {
         const action = ACTIONS.UPDATE;
         const account_options = { config_root, name: bucket_defaults.name };
-        const res = await exec_manage_cli(TYPES.BUCKET, action, account_options);
-        expect(JSON.parse(res.stdout).error.message).toBe(ManageCLIError.MissingUpdateProperty.message);
+        const res = await exec_noobaa_cli(TYPES.BUCKET, action, account_options);
+        expect(JSON.parse(res.stdout).error.message).toBe(NooBaaCLIError.MissingUpdateProperty.message);
     });
 
     it('should fail - cli update bucket owner - owner does not have any permission to path', async () => {
@@ -535,8 +535,8 @@ describe('cli update bucket', () => {
         await fs_utils.create_fresh_path(bucket_defaults.path);
         await fs_utils.file_must_exist(bucket_defaults.path);
         await set_path_permissions_and_owner(bucket_defaults.path, account_defaults2, 0o077);
-        const res = await exec_manage_cli(TYPES.BUCKET, action, bucket_options);
-        expect(JSON.parse(res.stdout).error.code).toBe(ManageCLIError.InaccessibleStoragePath.code);
+        const res = await exec_noobaa_cli(TYPES.BUCKET, action, bucket_options);
+        expect(JSON.parse(res.stdout).error.code).toBe(NooBaaCLIError.InaccessibleStoragePath.code);
     });
 
     it('should fail - cli update bucket owner - owner does not have write permission to path', async () => {
@@ -545,8 +545,8 @@ describe('cli update bucket', () => {
         await fs_utils.create_fresh_path(bucket_defaults.path);
         await fs_utils.file_must_exist(bucket_defaults.path);
         await set_path_permissions_and_owner(bucket_defaults.path, account_defaults2, 0o477);
-        const res = await exec_manage_cli(TYPES.BUCKET, action, bucket_options);
-        expect(JSON.parse(res.stdout).error.code).toBe(ManageCLIError.InaccessibleStoragePath.code);
+        const res = await exec_noobaa_cli(TYPES.BUCKET, action, bucket_options);
+        expect(JSON.parse(res.stdout).error.code).toBe(NooBaaCLIError.InaccessibleStoragePath.code);
     });
 
     it('should fail - cli update bucket owner - owner does not have read permission to path', async () => {
@@ -555,8 +555,8 @@ describe('cli update bucket', () => {
         await fs_utils.create_fresh_path(bucket_defaults.path);
         await fs_utils.file_must_exist(bucket_defaults.path);
         await set_path_permissions_and_owner(bucket_defaults.path, account_defaults2, 0o277);
-        const res = await exec_manage_cli(TYPES.BUCKET, action, bucket_options);
-        expect(JSON.parse(res.stdout).error.code).toBe(ManageCLIError.InaccessibleStoragePath.code);
+        const res = await exec_noobaa_cli(TYPES.BUCKET, action, bucket_options);
+        expect(JSON.parse(res.stdout).error.code).toBe(NooBaaCLIError.InaccessibleStoragePath.code);
     });
 
     it('cli update bucket owner - account can access path', async () => {
@@ -565,19 +565,19 @@ describe('cli update bucket', () => {
         await fs_utils.create_fresh_path(bucket_defaults.path);
         await fs_utils.file_must_exist(bucket_defaults.path);
         await set_path_permissions_and_owner(bucket_defaults.path, account_defaults2, 0o700);
-        await exec_manage_cli(TYPES.BUCKET, action, bucket_options);
+        await exec_noobaa_cli(TYPES.BUCKET, action, bucket_options);
         const bucket = await read_config_file(config_root, CONFIG_SUBDIRS.BUCKETS, bucket_defaults.name);
         expect(bucket.bucket_owner).toBe(account_defaults2.name);
     });
 });
 
 /**
- * exec_manage_cli will get the flags for the cli and runs the cli with it's flags
+ * exec_noobaa_cli will get the flags for the cli and runs the cli with it's flags
  * @param {string} type
  * @param {string} action
  * @param {object} options
  */
-async function exec_manage_cli(type, action, options) {
+async function exec_noobaa_cli(type, action, options) {
     let flags = ``;
     for (const key in options) {
         if (Object.hasOwn(options, key)) {
@@ -589,7 +589,7 @@ async function exec_manage_cli(type, action, options) {
         }
     }
     flags = flags.trim();
-    const command = `node src/cmd/manage_nsfs ${type} ${action} ${flags}`;
+    const command = `node src/cmd/noobaa-cli ${type} ${action} ${flags}`;
 
     let res;
     try {

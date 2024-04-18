@@ -223,13 +223,13 @@ function get_coretest_path() {
 }
 
 /**
- * exec_manage_cli runs the manage_nsfs cli
+ * exec_noobaa_cli runs the noobaa cli
  * @param {string} type
  * @param {string} action
  * @param {object} options
  * @returns {Promise<string>}
  */
-async function exec_manage_cli(type, action, options) {
+async function exec_noobaa_cli(type, action, options) {
     let flags = ``;
     for (const key in options) {
         if (options[key] !== undefined) {
@@ -252,12 +252,12 @@ async function exec_manage_cli(type, action, options) {
     }
     flags = flags.trim();
 
-    const command = `node src/cmd/manage_nsfs ${type} ${action} ${flags}`;
+    const command = `node src/cmd/noobaa-cli ${type} ${action} ${flags}`;
     try {
         const res = await os_utils.exec(command, { return_stdout: true });
         return res;
     } catch (err) {
-        console.error('test_utils.exec_manage_cli error', err);
+        console.error('test_utils.exec_noobaa_cli error', err);
         throw err;
     }
 }
@@ -327,7 +327,7 @@ exports.disable_accounts_s3_access = disable_accounts_s3_access;
 exports.generate_s3_policy = generate_s3_policy;
 exports.invalid_nsfs_root_permissions = invalid_nsfs_root_permissions;
 exports.get_coretest_path = get_coretest_path;
-exports.exec_manage_cli = exec_manage_cli;
+exports.exec_noobaa_cli = exec_noobaa_cli;
 exports.create_fs_user_by_platform = create_fs_user_by_platform;
 exports.delete_fs_user_by_platform = delete_fs_user_by_platform;
 exports.set_path_permissions_and_owner = set_path_permissions_and_owner;

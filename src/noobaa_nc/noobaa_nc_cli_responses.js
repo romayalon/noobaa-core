@@ -1,7 +1,7 @@
 /* Copyright (C) 2016 NooBaa */
 'use strict';
 
-const NoobaaEvent = require('../manage_nsfs/manage_nsfs_events_utils').NoobaaEvent;
+const NoobaaEvent = require('./nc_events_utils').NoobaaEvent;
 
 // TODO : define list & status types
 /**
@@ -10,13 +10,13 @@ const NoobaaEvent = require('../manage_nsfs/manage_nsfs_events_utils').NoobaaEve
  *      http_code: number,
  *      list?: object,
  *      status?: object,  
- * }} ManageCLIResponseSpec
+ * }} NooBaaCLIResponseSpec
  */
 
-class ManageCLIResponse {
+class NooBaaCLIResponse {
 
     /**
-     * @param {ManageCLIResponseSpec} response_spec 
+     * @param {NooBaaCLIResponseSpec} response_spec 
      */
     constructor({ code, status, list }) {
         this.code = code;
@@ -36,12 +36,12 @@ class ManageCLIResponse {
     }
 }
 
-// See Manage NSFS CLI error codes docs - TODO: add docs
+// See NooBaa CLI error codes docs - TODO: add docs
 
 ///////////////////////////////
 // IPS WHITE LIST RESPONSES ///
 ///////////////////////////////
-ManageCLIResponse.WhiteListIPUpdated = Object.freeze({
+NooBaaCLIResponse.WhiteListIPUpdated = Object.freeze({
     code: 'WhiteListIPUpdated',
     status: {}
 });
@@ -50,26 +50,26 @@ ManageCLIResponse.WhiteListIPUpdated = Object.freeze({
 // ACCOUNT RESPONSES ///
 ////////////////////////
 
-ManageCLIResponse.AccountCreated = Object.freeze({
+NooBaaCLIResponse.AccountCreated = Object.freeze({
     code: 'AccountCreated',
     status: {}
 });
 
-ManageCLIResponse.AccountDeleted = Object.freeze({
+NooBaaCLIResponse.AccountDeleted = Object.freeze({
     code: 'AccountDeleted',
 });
 
-ManageCLIResponse.AccountUpdated = Object.freeze({
+NooBaaCLIResponse.AccountUpdated = Object.freeze({
     code: 'AccountUpdated',
     status: {}
 });
 
-ManageCLIResponse.AccountStatus = Object.freeze({
+NooBaaCLIResponse.AccountStatus = Object.freeze({
     code: 'AccountStatus',
     status: {}
 });
 
-ManageCLIResponse.AccountList = Object.freeze({
+NooBaaCLIResponse.AccountList = Object.freeze({
     code: 'AccountList',
     list: {}
 });
@@ -78,26 +78,26 @@ ManageCLIResponse.AccountList = Object.freeze({
 /// BUCKET RESPONSES ///
 ////////////////////////
 
-ManageCLIResponse.BucketCreated = Object.freeze({
+NooBaaCLIResponse.BucketCreated = Object.freeze({
     code: 'BucketCreated',
     status: {}
 });
 
-ManageCLIResponse.BucketDeleted = Object.freeze({
+NooBaaCLIResponse.BucketDeleted = Object.freeze({
     code: 'BucketDeleted',
 });
 
-ManageCLIResponse.BucketUpdated = Object.freeze({
+NooBaaCLIResponse.BucketUpdated = Object.freeze({
     code: 'BucketUpdated',
     status: {}
 });
 
-ManageCLIResponse.BucketStatus = Object.freeze({
+NooBaaCLIResponse.BucketStatus = Object.freeze({
     code: 'BucketStatus',
     status: {}
 });
 
-ManageCLIResponse.BucketList = Object.freeze({
+NooBaaCLIResponse.BucketList = Object.freeze({
     code: 'BucketList',
     list: {}
 });
@@ -110,5 +110,5 @@ const NSFS_CLI_SUCCESS_EVENT_MAP = {
     WhiteListIPUpdated: NoobaaEvent.WHITELIST_UPDATED,
 };
 
-exports.ManageCLIResponse = ManageCLIResponse;
+exports.NooBaaCLIResponse = NooBaaCLIResponse;
 exports.NSFS_CLI_SUCCESS_EVENT_MAP = NSFS_CLI_SUCCESS_EVENT_MAP;

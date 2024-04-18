@@ -13,15 +13,15 @@ const BucketSpaceSimpleFS = require('./bucketspace_simple_fs');
 const _ = require('lodash');
 const util = require('util');
 const bucket_policy_utils = require('../endpoint/s3/s3_bucket_policy_utils');
-const nsfs_schema_utils = require('../manage_nsfs/nsfs_schema_utils');
-const nc_mkm = require('../manage_nsfs/nc_master_key_manager').get_instance();
+const nsfs_schema_utils = require('../noobaa_nc/noobaa_nc_schema_utils');
+const nc_mkm = require('../noobaa_nc/nc_master_key_manager').get_instance();
 
 const mongo_utils = require('../util/mongo_utils');
-const { CONFIG_SUBDIRS } = require('../manage_nsfs/manage_nsfs_constants');
+const { CONFIG_SUBDIRS } = require('../noobaa_nc/noobaa_nc_constants');
 
 const KeysSemaphore = require('../util/keys_semaphore');
 const native_fs_utils = require('../util/native_fs_utils');
-const NoobaaEvent = require('../manage_nsfs/manage_nsfs_events_utils').NoobaaEvent;
+const NoobaaEvent = require('../noobaa_nc/nc_events_utils').NoobaaEvent;
 
 const dbg = require('../util/debug_module')(__filename);
 const bucket_semaphore = new KeysSemaphore(1);
@@ -340,7 +340,7 @@ class BucketSpaceFS extends BucketSpaceSimpleFS {
                         full_path: path.join(this.fs_root, namespace_bucket_config.write_resource.path) // includes write_resource.path + bucket name (s3 flow)
                     }, object_sdk);
                 } else if (namespace_bucket_config) {
-                    // S3 Delete for NSFS Manage buckets
+                    // S3 Delete for NooBaa CLI (exported) buckets
                     const list = await ns.list_objects({ ...params, limit: 1 }, object_sdk);
                     if (list && list.objects && list.objects.length > 0) {
                         throw new RpcError('NOT_EMPTY', 'underlying directory has files in it');

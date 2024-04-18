@@ -16,7 +16,7 @@ const fs_utils = require('../../util/fs_utils');
 const test_utils = require('../system_tests/test_utils');
 const { stat } = require('../../util/nb_native')().fs;
 const { get_process_fs_context } = require('../../util/native_fs_utils');
-const ManageCLIError = require('../../manage_nsfs/manage_nsfs_cli_errors').ManageCLIError;
+const NooBaaCLIError = require('../../noobaa_nc/noobaa_nc_cli_errors').NooBaaCLIError;
 const { TMP_PATH, get_coretest_path, invalid_nsfs_root_permissions,
     generate_s3_policy, create_fs_user_by_platform, delete_fs_user_by_platform } = require('../system_tests/test_utils');
 
@@ -188,7 +188,7 @@ mocha.describe('bucket operations - namespace_fs', function() {
         console.log(inspect(res));
         let list_ok;
         if (is_nc_coretest) {
-            // in order to create a bucket in manage nsfs we need to give permission to the owner
+            // in order to create a bucket in noobaa cli we need to give permission to the owner
             // hence we will have the gid and uid of the bucket_name
             list_ok = bucket_in_list([first_bucket], [], res.Buckets);
         } else {
@@ -237,13 +237,13 @@ mocha.describe('bucket operations - namespace_fs', function() {
                 nsfs_account_config: { new_buckets_path: 'dummy_dir1/' },
                 default_resource,
                 should_fail: process.env.NC_CORETEST,
-                error_code: ManageCLIError.InvalidAccountNewBucketsPath.code
+                error_code: NooBaaCLIError.InvalidAccountNewBucketsPath.code
             },
             {
                 nsfs_account_config: {},
                 default_resource,
                 should_fail: true,
-                error_code: is_nc_coretest ? ManageCLIError.MissingUpdateProperty.code : 'FORBIDDEN'
+                error_code: is_nc_coretest ? NooBaaCLIError.MissingUpdateProperty.code : 'FORBIDDEN'
             },
             { nsfs_account_config: { uid: 26041992 }, default_resource, should_fail: false }
         ];
@@ -463,9 +463,9 @@ mocha.describe('bucket operations - namespace_fs', function() {
         const account = await rpc_client.account.read_account({ email: email });
         const default_resource = account.default_resource;
         const arr = [
-            { nsfs_account_config: { distinguished_name: 'bla' }, default_resource, should_fail: process.env.NC_CORETEST, error_code: ManageCLIError.InvalidAccountDistinguishedName.code },
-            { nsfs_account_config: { new_buckets_path: 'dummy_dir1/' }, default_resource, should_fail: process.env.NC_CORETEST, error_code: ManageCLIError.InvalidAccountNewBucketsPath.code },
-            { nsfs_account_config: {}, default_resource, should_fail: true, error_code: is_nc_coretest ? ManageCLIError.MissingUpdateProperty.code : 'FORBIDDEN' },
+            { nsfs_account_config: { distinguished_name: 'bla' }, default_resource, should_fail: process.env.NC_CORETEST, error_code: NooBaaCLIError.InvalidAccountDistinguishedName.code },
+            { nsfs_account_config: { new_buckets_path: 'dummy_dir1/' }, default_resource, should_fail: process.env.NC_CORETEST, error_code: NooBaaCLIError.InvalidAccountNewBucketsPath.code },
+            { nsfs_account_config: {}, default_resource, should_fail: true, error_code: is_nc_coretest ? NooBaaCLIError.MissingUpdateProperty.code : 'FORBIDDEN' },
             { nsfs_account_config: { distinguished_name: 'root' }, default_resource, should_fail: false },
             {
                 nsfs_account_config: { distinguished_name: no_permissions_dn, new_buckets_path: public_new_buckets_dir, },
@@ -808,7 +808,7 @@ mocha.describe('bucket operations - namespace_fs', function() {
                 assert.fail(`found account: ${deleted_account_exist} - account should be deleted`);
             } catch (err) {
                 if (process.env.NC_CORETEST) {
-                    assert.equal(JSON.parse(err.stdout).error.code, ManageCLIError.NoSuchAccountName.code);
+                    assert.equal(JSON.parse(err.stdout).error.code, NooBaaCLIError.NoSuchAccountName.code);
                 } else {
                     assert.equal(err.rpc_code, 'NO_SUCH_ACCOUNT');
                 }
@@ -848,7 +848,7 @@ mocha.describe('bucket operations - namespace_fs', function() {
                 assert.fail(`found account: ${deleted_account_exist} - account should be deleted`);
             } catch (err) {
                 if (process.env.NC_CORETEST) {
-                    assert.equal(JSON.parse(err.stdout).error.code, ManageCLIError.NoSuchAccountName.code);
+                    assert.equal(JSON.parse(err.stdout).error.code, NooBaaCLIError.NoSuchAccountName.code);
                 } else {
                     assert.equal(err.rpc_code, 'NO_SUCH_ACCOUNT');
                 }
