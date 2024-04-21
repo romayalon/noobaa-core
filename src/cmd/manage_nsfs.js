@@ -26,6 +26,7 @@ const { TYPES, ACTIONS, VALID_OPTIONS, OPTION_TYPE, FROM_FILE, BOOLEAN_STRING_VA
     LIST_ACCOUNT_FILTERS, LIST_BUCKET_FILTERS, GLACIER_ACTIONS, LIST_UNSETABLE_OPTIONS } = require('../manage_nsfs/manage_nsfs_constants');
 const NoobaaEvent = require('../manage_nsfs/manage_nsfs_events_utils').NoobaaEvent;
 const nc_mkm = require('../manage_nsfs/nc_master_key_manager').get_instance();
+const NSFSHealthMain = require('../cmd/health').main;
 
 function throw_cli_error(error_code, detail, event_arg) {
     const error_event = NSFS_CLI_ERROR_EVENT_MAP[error_code.code];
@@ -110,6 +111,8 @@ async function main(argv = minimist(process.argv.slice(2))) {
             await whitelist_ips_management(argv);
         } else if (type === TYPES.GLACIER) {
             await glacier_management(argv);
+        } else if (type === TYPES.HEALTH) {
+            await health_management(argv);
         } else {
             // we should not get here (we check it before)
             throw_cli_error(ManageCLIError.InvalidType);
@@ -1105,6 +1108,11 @@ function get_boolean_or_string_value(value) {
     } else { // boolean type
         return Boolean(value);
     }
+}
+
+async function health_management(argv) {
+    const health_argv = argv._.slice(1) || '';
+    await NSFSHealthMain(health_argv);
 }
 
 async function glacier_management(argv) {

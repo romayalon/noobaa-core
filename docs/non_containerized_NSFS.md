@@ -227,7 +227,7 @@ NSFS Health status can be fetched using the command line. Run `--help` to get al
 NOTE - health script execution requires root permissions.
 
  ```
- sudo node usr/local/noobaa-core/src/cmd/health [--https_port, --all_account_details, --all_bucket_details]
+ sudo node usr/local/noobaa-core/src/cmd/noobaa-cli health [--https_port, --all_account_details, --all_bucket_details]
  ```
 
  output:

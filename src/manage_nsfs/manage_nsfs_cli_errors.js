@@ -79,7 +79,7 @@ ManageCLIError.InvalidArgumentType = Object.freeze({
 
 ManageCLIError.InvalidType = Object.freeze({
     code: 'InvalidType',
-    message: 'Invalid type, available types are account, bucket or whitelist',
+    message: 'Invalid type, available types are account, bucket, whitelist, glacier and health',
     http_code: 400,
 });
 
