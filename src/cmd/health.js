@@ -13,6 +13,8 @@ const native_fs_utils = require('../util/native_fs_utils');
 const { read_stream_join } = require('../util/buffer_utils');
 const { make_https_request } = require('../util/http_utils');
 const { TYPES } = require('../manage_nsfs/manage_nsfs_constants');
+const { validate_input_types } = require('../manage_nsfs/manage_nsfs_validations');
+const { get_boolean_or_string_value } = require('../manage_nsfs/manage_nsfs_cli_utils');
 
 const HELP = `
 Help:
@@ -37,6 +39,7 @@ Flags:
     --https_port                      (optional)                             Set the S3 endpoint listening HTTPS port to serve. (default config.ENDPOINT_SSL_PORT)
     --all_account_details             (optional)                             Set a flag for returning all account details.
     --all_bucket_details              (optional)                             Set a flag for returning all bucket details.
+    --check_rsyslog                   (optional)                             Set a flag for considering rsyslog in health check.
     --check_syslog_ng                 (optional)                             Set a flag for considering syslog-ng in health check.
 `;
 
@@ -59,6 +62,10 @@ const health_errors = {
     RSYSLOG_SERVICE_FAILED: {
         error_code: 'RSYSLOG_SERVICE_FAILED',
         error_message: 'RSYSLOG service is not started properly, Please verify the service with status command.',
+    },
+    SYSLOG_NG_SERVICE_FAILED: {
+        error_code: 'SYSLOG_NG_SERVICE_FAILED',
+        error_message: 'SYSLOG_NG service is not started properly, Please verify the service with status command.',
     },
     NOOBAA_ENDPOINT_FAILED: {
         error_code: 'NOOBAA_ENDPOINT_FAILED',
@@ -114,6 +121,11 @@ const health_errors_tyes = {
     TEMPORARY: 'TEMPORARY',
 };
 
+const service_statuses = {
+    OK: 'OK',
+    NOTOK: 'NOTOK'
+};
+
 //suppress aws sdk related commands.
 process.env.AWS_SDK_JS_SUPPRESS_MAINTENANCE_MODE_MESSAGE = '1';
 
@@ -126,80 +138,45 @@ class NSFSHealth {
         this.all_account_details = options.all_account_details;
         this.all_bucket_details = options.all_bucket_details;
         this.check_syslog_ng = options.check_syslog_ng;
+        this.check_rsyslog = options.check_rsyslog;
     }
+
+    // 1. get noobaa service state
+    // 2. get endpoint response
+    // 3. get service memory usage
+    // 4. if check_rsyslog flag provided check rsyslog status
+    // 5. if check_syslog_ng flag provided check syslog_ng status
+    // 6. if all_account_details flag provided check accounts status
+    // 7. if all_bucket_details flag provided check buckets status
     async nc_nsfs_health() {
-        let endpoint_state;
-        let memory;
-        let syslog_ng;
-        const { service_status, pid } = await this.get_service_state(NOOBAA_SERVICE);
-        if (pid !== '0') {
-            endpoint_state = await this.get_endpoint_response();
-            memory = await this.get_service_memory_usage();
-        }
-        let bucket_details;
-        let account_details;
-        const response_code = endpoint_state ? endpoint_state.response.response_code : 'NOT_RUNNING';
-        const rsyslog = await this.get_service_state(RSYSLOG_SERVICE);
-        let service_health = 'OK';
-        let syslog_ng_health = 'OK';
-        if (this.check_syslog_ng) {
-            syslog_ng = await this.get_service_state(SYSLOG_NG_SERVICE);
-            if (syslog_ng.service_status !== 'active' || syslog_ng.pid === '0') {
-                syslog_ng_health = 'NOTOK';
-            }
-        }
-        if (syslog_ng_health === 'NOTOK' || service_status !== 'active' || pid === '0' || response_code !== 'RUNNING' ||
-            rsyslog.service_status !== 'active' || rsyslog.pid === '0') {
-            service_health = 'NOTOK';
-        }
-        const error_code = await this.get_error_code(service_status, pid, rsyslog.service_status, response_code);
-        if (this.all_bucket_details) bucket_details = await this.get_bucket_status(this.config_root);
-        if (this.all_account_details) account_details = await this.get_account_status(this.config_root);
-        const health = {
+        const noobaa_service_info = await this.get_service_state(NOOBAA_SERVICE);
+        const is_noobaa_svc_healthy = noobaa_service_info.error_code;
+        const endpoint_state = is_noobaa_svc_healthy && await this.get_endpoint_response();
+        const memory = is_noobaa_svc_healthy && await this.get_service_memory_usage();
+        const health_error_code = await this.get_health_error_code(endpoint_state);
+        const is_health_ok = health_error_code ? service_statuses.NOTOK : service_statuses.OK;
+
+        const health = _.omitBy({
             service_name: NOOBAA_SERVICE,
-            status: service_health,
+            status: is_health_ok,
             memory: memory,
-            error: error_code,
+            error: health_error_code,
             checks: {
-                services: [{
-                        name: NOOBAA_SERVICE,
-                        service_status: service_status,
-                        pid: pid,
-                        error_type: health_errors_tyes.PERSISTENT,
-                    },
-                    {
-                        name: RSYSLOG_SERVICE,
-                        service_status: rsyslog.service_status,
-                        pid: rsyslog.pid,
-                        error_type: health_errors_tyes.PERSISTENT,
-                    }
-                ],
-                endpoint: {
-                    endpoint_state,
-                    error_type: health_errors_tyes.TEMPORARY,
-                },
-                accounts_status: {
-                    invalid_accounts: account_details === undefined ? undefined : account_details.invalid_storages,
-                    valid_accounts: account_details === undefined ? undefined : account_details.valid_storages,
-                    error_type: health_errors_tyes.PERSISTENT,
-                },
-                buckets_status: {
-                    invalid_buckets: bucket_details === undefined ? undefined : bucket_details.invalid_storages,
-                    valid_buckets: bucket_details === undefined ? undefined : bucket_details.valid_storages,
-                    error_type: health_errors_tyes.PERSISTENT,
-                }
-            }
-        };
-        if (this.check_syslog_ng) {
-            health.checks.services.push({
-                name: SYSLOG_NG_SERVICE,
-                service_status: syslog_ng.service_status,
-                pid: syslog_ng.pid,
-                error_type: health_errors_tyes.PERSISTENT,
-            });
+                services: [noobaa_service_info],
+                endpoint: { endpoint_state }
+            },
+            buckets_status: await this.get_buckets_status(),
+            accounts_status: await this.get_accounts_status()
+        }, _.isUndefined);
+
+        if (this.check_rsyslog) {
+            const rsyslog_info = await this.get_service_state(RSYSLOG_SERVICE);
+            health.services.push(rsyslog_info);
         }
-        if (!this.all_account_details) delete health.checks.accounts_status;
-        if (!this.all_bucket_details) delete health.checks.buckets_status;
+        if (this.check_syslog_ng) {
+            const syslog_ng_info = await this.get_service_state(SYSLOG_NG_SERVICE);
+            health.services.push(syslog_ng_info);
+        }
         return health;
     }
 
@@ -218,22 +195,39 @@ class NSFSHealth {
             });
         } catch (err) {
             console.log('Error while pinging endpoint host :' + HOSTNAME + ', port ' + this.https_port, err);
-            return {
-                response: fork_response_code.NOT_RUNNING.response_code,
-            };
+            endpoint_state = { response: fork_response_code.NOT_RUNNING };
         }
-        return endpoint_state;
+        const is_endpoint_healthy = endpoint_state.response.response_code === fork_response_code.RUNNING.response_code;
+        const error_type = is_endpoint_healthy ? undefined : health_errors_tyes.TEMPORARY;
+        return { ...endpoint_state, error_type };
     }
 
-    async get_error_code(nsfs_status, pid, rsyslog_status, endpoint_response_code) {
-        if (nsfs_status !== 'active' || pid === '0') {
-            return health_errors.NOOBAA_SERVICE_FAILED;
-        } else if (rsyslog_status !== 'active') {
-            return health_errors.RSYSLOG_SERVICE_FAILED;
-        } else if (endpoint_response_code === 'NOT_RUNNING') {
+    async get_health_error_code(endpoint_state) {
+        return this.get_service_error_code(NOOBAA_SERVICE) ||
+            this.get_endpoint_error_code(endpoint_state);
+    }
+
+    async get_endpoint_error_code(endpoint_state) {
+        const endpoint_response_code = endpoint_state ?
+            endpoint_state.response.response_code :
+            fork_response_code.NOT_RUNNING.response_code;
+
+        if (endpoint_response_code === fork_response_code.NOT_RUNNING.response_code) {
             return health_errors.NOOBAA_ENDPOINT_FAILED;
-        } else if (endpoint_response_code === 'MISSING_FORKS') {
+        } else if (endpoint_response_code === fork_response_code.MISSING_FORKS.response_code) {
             return health_errors.NOOBAA_ENDPOINT_FORK_MISSING;
+        }
+    }
+
+    get_service_error_code(service_name) {
+        if (service_name === RSYSLOG_SERVICE) {
+            return health_errors.RSYSLOG_SERVICE_FAILED;
+        }
+        if (service_name === SYSLOG_NG_SERVICE) {
+            return health_errors.SYSLOG_NG_SERVICE_FAILED;
+        }
+        if (service_name === NOOBAA_SERVICE) {
+            return health_errors.NOOBAA_SERVICE_FAILED;
         }
     }
 
@@ -248,7 +242,11 @@ class NSFSHealth {
             return_stdout: true,
             trim_stdout: true,
         });
-        return { service_status: service_status, pid: pid };
+        const health_status = (service_status !== 'active' || pid === '0') ? service_statuses.NOTOK : service_statuses.OK;
+        const is_service_healthy = health_status === service_statuses.OK;
+        const error_code = is_service_healthy ? undefined : this.get_service_error_code(service_name);
+        const error_type = is_service_healthy ? undefined : health_errors_tyes.PERSISTENT;
+        return { name: service_name, service_status, pid, error_code, error_type };
     }
 
     async make_endpoint_health_request(url_path) {
@@ -343,19 +341,29 @@ class NSFSHealth {
         };
     }
 
-    async get_bucket_status(config_root) {
-        const bucket_details = await this.get_storage_status(config_root, TYPES.BUCKET, this.all_bucket_details);
-        return bucket_details;
+    async get_buckets_status() {
+        const bucket_details = await this.get_storage_status(TYPES.BUCKET, this.all_bucket_details);
+        const has_invalid_buckets = bucket_details.invalid_storages.length > 0;
+        return _.omitBy({
+            invalid_buckets: bucket_details.invalid_storages,
+            valid_buckets: this.all_bucket_details ? bucket_details.valid_storages : undefined,
+            error_type: has_invalid_buckets ? health_errors_tyes.PERSISTENT : undefined,
+        }, _.isUndefined);
     }
 
-    async get_account_status(config_root) {
-        const account_details = await this.get_storage_status(config_root, TYPES.ACCOUNT, this.all_account_details);
-        return account_details;
+    async get_accounts_status() {
+        const account_details = await this.get_storage_status(TYPES.ACCOUNT, this.all_account_details);
+        const has_invalid_accounts = account_details.invalid_storages.length > 0;
+        return _.omitBy({
+            invalid_accounts: account_details.invalid_storages,
+            valid_accounts: this.all_account_details ? account_details.valid_storages : undefined,
+            error_type: has_invalid_accounts ? health_errors_tyes.PERSISTENT : undefined
+        }, _.isUndefined);
     }
 
-    async get_storage_status(config_root, type, all_details) {
+    async get_storage_status(type, all_details) {
         const fs_context = this.get_root_fs_context();
-        const config_root_type_path = this.get_config_path(config_root, type);
+        const config_root_type_path = this.get_config_path(type);
         const invalid_storages = [];
         const valid_storages = [];
         //check for account and buckets dir paths
@@ -392,8 +400,8 @@ class NSFSHealth {
             } else if (type === TYPES.BUCKET) {
                 res = await is_bucket_storage_path_exists(fs_context, config_data, storage_path);
             }
-            if (all_details && res.valid_storage) {
-                valid_storages.push(res.valid_storage);
+            if (res.valid_storage) {
+                if (all_details) valid_storages.push(res.valid_storage);
             } else {
                 invalid_storages.push(res.invalid_storage);
             }
@@ -404,8 +412,8 @@ class NSFSHealth {
         };
     }
 
-    get_config_path(config_root, type) {
-        return path.join(config_root, type === TYPES.BUCKET ? '/buckets' : '/accounts');
+    get_config_path(type) {
+        return path.join(this.config_root, type === TYPES.BUCKET ? '/buckets' : '/accounts');
     }
 }
 
@@ -415,21 +423,19 @@ async function main(argv = minimist(process.argv.slice(2))) {
             throw new Error('Root permissions required for NSFS Health execution.');
         }
         if (argv.help || argv.h) return print_usage();
+        validate_input_types('health', '', argv);
         const config_root = argv.config_root ? String(argv.config_root) : config.NSFS_NC_CONF_DIR;
         const https_port = Number(argv.https_port) || config.ENDPOINT_SSL_PORT;
-        const deployment_type = argv.deployment_type || 'nc';
-        const all_account_details = argv.all_account_details || false;
-        const all_bucket_details = argv.all_bucket_details || false;
-        const check_syslog_ng = argv.check_syslog_ng || false;
-        if (deployment_type === 'nc') {
-            const health = new NSFSHealth({ https_port, config_root, all_account_details, all_bucket_details, check_syslog_ng });
-            const health_status = await health.nc_nsfs_health();
-            process.stdout.write(JSON.stringify(health_status) + '\n', () => {
-                process.exit(0);
-            });
-        } else {
-            dbg.log0('Health is not supported for simple nsfs deployment.');
-        }
+        const all_account_details = get_boolean_or_string_value(argv.all_account_details);
+        const all_bucket_details = get_boolean_or_string_value(argv.all_account_details);
+        const check_rsyslog = get_boolean_or_string_value(argv.check_rsyslog);
+        const check_syslog_ng = get_boolean_or_string_value(argv.check_syslog_ng);
+        const health = new NSFSHealth({ https_port, config_root, all_account_details, all_bucket_details, check_rsyslog, check_syslog_ng });
+        const health_status = await health.nc_nsfs_health();
+        process.stdout.write(JSON.stringify(health_status) + '\n', () => {
+            process.exit(0);
+        });
+
     } catch (err) {
         dbg.error('Health: exit on error', err.stack || err);
         process.exit(2);

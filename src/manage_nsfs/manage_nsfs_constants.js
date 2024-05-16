@@ -6,6 +6,7 @@ const TYPES = {
     BUCKET: 'bucket',
     IP_WHITELIST: 'whitelist',
     GLACIER: 'glacier',
+    HEALTH: 'health'
 };
 
 const ACTIONS = {
@@ -54,6 +55,9 @@ const VALID_OPTIONS_GLACIER = {
     'expiry': new Set([ GLOBAL_CONFIG_ROOT]),
 };
 
+const VALID_OPTIONS_HEALTH = new Set(['https_port', 'deployment_type', 'all_account_details', 'all_bucket_details', 'check_syslog_ng', ...GLOBAL_CONFIG_OPTIONS]);
+const VALID_HEALTH_DEPLOYMENT_TYPE = ['nc'];
+
 const VALID_OPTIONS_WHITELIST = new Set(['ips', ...GLOBAL_CONFIG_OPTIONS]);
 
 const VALID_OPTIONS_FROM_FILE = new Set(['from_file', ...GLOBAL_CONFIG_OPTIONS]);
@@ -64,6 +68,7 @@ const VALID_OPTIONS = {
     glacier_options: VALID_OPTIONS_GLACIER,
     whitelist_options: VALID_OPTIONS_WHITELIST,
     from_file_options: VALID_OPTIONS_FROM_FILE,
+    health_options: VALID_OPTIONS_HEALTH
 };
 
 const OPTION_TYPE = {
@@ -88,7 +93,12 @@ const OPTION_TYPE = {
     wide: 'boolean',
     show_secrets: 'boolean',
     ips: 'string',
-    force: 'boolean'
+    force: 'boolean',
+    deployment_type: 'string',
+    all_account_details: 'boolean',
+    all_bucket_details: 'boolean',
+    https_port: 'number',
+    check_syslog_ng: 'boolean'
 };
 
 const BOOLEAN_STRING_VALUES = ['true', 'false'];

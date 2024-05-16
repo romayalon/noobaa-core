@@ -63,7 +63,7 @@ function validate_type_and_action(type, action) {
     if (!Object.values(TYPES).includes(type)) throw_cli_error(ManageCLIError.InvalidType);
     if (type === TYPES.ACCOUNT || type === TYPES.BUCKET) {
         if (!Object.values(ACTIONS).includes(action)) throw_cli_error(ManageCLIError.InvalidAction);
-    } else if (type === TYPES.IP_WHITELIST) {
+    } else if (type === TYPES.IP_WHITELIST || type === TYPES.HEALTH) {
         if (action !== '') throw_cli_error(ManageCLIError.InvalidAction);
     } else if (type === TYPES.GLACIER) {
         if (!Object.values(GLACIER_ACTIONS).includes(action)) throw_cli_error(ManageCLIError.InvalidAction);
@@ -90,6 +90,8 @@ function validate_no_extra_options(type, action, input_options, is_options_from_
         valid_options = VALID_OPTIONS.account_options[action];
     } else if (type === TYPES.GLACIER) {
         valid_options = VALID_OPTIONS.glacier_options[action];
+    } else if (type === TYPES.HEALTH) {
+        valid_options = VALID_OPTIONS.health_options;
     } else {
         valid_options = VALID_OPTIONS.whitelist_options;
     }
@@ -131,7 +133,8 @@ function validate_options_type_by_value(input_options_with_data) {
                 continue;
             }
             // special case for boolean values
-            if (['allow_bucket_creation', 'regenerate', 'wide', 'show_secrets', 'force', 'force_md5_etag'].includes(option) && validate_boolean_string_value(value)) {
+            if (['allow_bucket_creation', 'regenerate', 'wide', 'show_secrets', 'force',
+                'force_md5_etag', 'all_account_details', 'all_bucket_details', 'check_syslog_ng'].includes(option) && validate_boolean_string_value(value)) {
                 continue;
             }
             // special case for bucket_policy (from_file)
