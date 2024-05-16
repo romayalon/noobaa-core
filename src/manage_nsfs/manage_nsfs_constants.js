@@ -98,7 +98,8 @@ const OPTION_TYPE = {
     all_account_details: 'boolean',
     all_bucket_details: 'boolean',
     https_port: 'number',
-    check_syslog_ng: 'boolean'
+    check_syslog_ng: 'boolean',
+    check_rsyslog: 'boolean'
 };
 
 const BOOLEAN_STRING_VALUES = ['true', 'false'];

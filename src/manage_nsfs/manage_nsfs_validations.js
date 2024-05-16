@@ -134,7 +134,7 @@ function validate_options_type_by_value(input_options_with_data) {
             }
             // special case for boolean values
             if (['allow_bucket_creation', 'regenerate', 'wide', 'show_secrets', 'force',
-                'force_md5_etag', 'all_account_details', 'all_bucket_details', 'check_syslog_ng'].includes(option) && validate_boolean_string_value(value)) {
+                'force_md5_etag', 'all_account_details', 'all_bucket_details', 'check_syslog_ng', 'check_rsyslog'].includes(option) && validate_boolean_string_value(value)) {
                 continue;
             }
             // special case for bucket_policy (from_file)
