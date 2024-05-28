@@ -569,6 +569,7 @@ async function get_account_status(data, show_secrets) {
         if (config_data.access_keys) config_data.access_keys = await nc_mkm.decrypt_access_keys(config_data);
         write_stdout_response(ManageCLIResponse.AccountStatus, config_data);
     } catch (err) {
+        if (err.code !== 'ENOENT') throw err;
         if (_.isUndefined(data.name)) {
             throw_cli_error(ManageCLIError.NoSuchAccountAccessKey, data.access_keys[0].access_key.unwrap());
         } else {

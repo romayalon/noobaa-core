@@ -78,9 +78,8 @@ class NCMasterKeysManager {
      * @returns {MasterKey}
      */
     _set_keys(master_keys) {
-        if (!master_keys.active_master_key || !master_keys.master_keys_by_id) throw new RpcError('INVALID_MASTER_KEYS_FILE', 'Invalid master_keys.json file');
         dbg.log0('_set_keys: master_keys', util.inspect(master_keys));
-
+        if (!master_keys.active_master_key || !master_keys.master_keys_by_id) throw new RpcError('INVALID_MASTER_KEY', 'Invalid master_keys.json');
         for (const [master_key_id, master_key] of Object.entries(master_keys.master_keys_by_id)) {
             try {
                 this.master_keys_by_id[master_key.id] = get_buffered_master_key(master_key);
@@ -88,12 +87,13 @@ class NCMasterKeysManager {
                     this.active_master_key = this.master_keys_by_id[master_key.id];
                 }
             } catch (err) {
-                dbg.error('couldn\'t load master_keys.json file', err);
-                throw new RpcError('INVALID_MASTER_KEYS_FILE', 'Invalid master_keys.json file');
+                dbg.error('couldn\'t set master keys', err);
+                throw new RpcError('INVALID_MASTER_KEY', 'couldn\'t set master keys');
             }
         }
+
         if (!this.active_master_key) {
-            throw new RpcError('INVALID_MASTER_KEYS_FILE', 'Invalid master_keys.json file, couldn\'t find active master key in master_keys_by_id');
+            throw new RpcError('INVALID_MASTER_KEY', 'Invalid master_keys.json, couldn\'t find active master key in master_keys_by_id');
         }
         dbg.log0('_set_keys: this.master_keys_by_id=', this.master_keys_by_id);
         dbg.log0('_set_keys: this.active_master_key=', this.active_master_key);
@@ -147,7 +147,7 @@ class NCMasterKeysManager {
                 if (err.code === 'ENOENT') {
                     dbg.warn('init_from_file: couldn\'t find master keys file', master_keys_path);
                     await this._create_master_key();
-                } else if (err.rpc_code === 'INVALID_MASTER_KEYS_FILE') {
+                } else if (err.rpc_code === 'INVALID_MASTER_KEY') {
                     dbg.error('init_from_file: master keys file is invalid', master_keys_path);
                     throw err;
                 } else {
@@ -290,8 +290,7 @@ class NCMasterKeysManager {
      */
     encryptSync(secret_key, master_key_id = this.active_master_key?.id) {
         dbg.log0('encryptSync: this.master_keys_by_id=', this.master_keys_by_id, 'master_key_id=', master_key_id, 'this.master_keys_by_id[master_key_id]=', this.master_keys_by_id[master_key_id]);
-        if (!this.master_keys_by_id || !master_key_id) throw new Error('Invalid master key manager');
-        if (!this.master_keys_by_id[master_key_id]) throw new Error(`master key id is missing in master_keys_by_id`);
+        this._validate_master_key_manager(master_key_id);
         const { cipher_key, cipher_iv, encryption_type } = this.master_keys_by_id[master_key_id];
         const cipher = crypto.createCipheriv(encryption_type, cipher_key, cipher_iv);
         const updated_value = cipher.update(Buffer.from(secret_key));
@@ -318,8 +317,7 @@ class NCMasterKeysManager {
      */
     decryptSync(secret_key, master_key_id) {
         dbg.log0('decryptSync: this.master_keys_by_id=', this.master_keys_by_id, 'master_key_id=', master_key_id, 'this.master_keys_by_id[master_key_id]=', this.master_keys_by_id[master_key_id]);
-        if (!this.master_keys_by_id || !master_key_id) throw new Error('Invalid master key manager');
-        if (!this.master_keys_by_id[master_key_id]) throw new Error(`master key id is missing in master_keys_by_id`);
+        this._validate_master_key_manager(master_key_id);
         const { cipher_key, cipher_iv, encryption_type } = this.master_keys_by_id[master_key_id];
         const decipher = crypto.createDecipheriv(encryption_type, cipher_key, cipher_iv);
         const decrypted_secret_key = decipher.update(Buffer.from(secret_key, 'base64')).toString();
@@ -353,6 +351,16 @@ class NCMasterKeysManager {
         })));
         return decrypted_access_keys;
     }
+
+    /**
+     * _validate_master_key_manager validates the master keys before decrypt/encrypt
+     * @param {nb.ID} master_key_id
+     */
+    _validate_master_key_manager(master_key_id) {
+        if (!this.master_keys_by_id) throw new RpcError('INVALID_MASTER_KEY', 'master_keys_by_id object is undefined');
+        if (!master_key_id) throw new RpcError('INVALID_MASTER_KEY', 'Master key id is undefined');
+        if (!this.master_keys_by_id[master_key_id]) throw new RpcError('INVALID_MASTER_KEY', 'master key id is missing in master_keys_by_id');
+    }
 }
 
 /**
@@ -369,7 +377,7 @@ function get_buffered_master_key(master_key) {
         };
         return buffered_master_key;
     } catch (err) {
-        throw new RpcError('INVALID_MASTER_KEYS_FILE', 'Invalid master_keys.json file');
+        throw new RpcError('INVALID_MASTER_KEY', 'Could not convert master key strings to buffers');
     }
 }
 
