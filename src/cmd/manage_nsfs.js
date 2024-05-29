@@ -382,7 +382,8 @@ async function fetch_account_data(action, user_input) {
     if (action === ACTIONS.UPDATE || action === ACTIONS.DELETE) {
         // @ts-ignore
         data = _.omitBy(data, _.isUndefined);
-        data = await fetch_existing_account_data(data);
+        const decrypt_secret_key = action === ACTIONS.UPDATE;
+        data = await fetch_existing_account_data(data, decrypt_secret_key);
     }
 
     // override values
@@ -406,14 +407,14 @@ async function fetch_account_data(action, user_input) {
     return data;
 }
 
-async function fetch_existing_account_data(target) {
+async function fetch_existing_account_data(target, decrypt_secret_key) {
     let source;
     try {
         const account_path = target.name ?
             get_config_file_path(accounts_dir_path, target.name) :
             get_symlink_config_file_path(access_keys_dir_path, target.access_keys[0].access_key);
         source = await get_config_data(account_path, true);
-        source.access_keys = await nc_mkm.decrypt_access_keys(source);
+        if (decrypt_secret_key) source.access_keys = await nc_mkm.decrypt_access_keys(source);
     } catch (err) {
         dbg.log1('NSFS Manage command: Could not find account', target, err);
         if (err.code === 'ENOENT') {
@@ -657,6 +658,8 @@ async function list_config_files(type, config_path, wide, show_secrets, filters)
     const entries = await nb_native().fs.readdir(fs_context, config_path);
     const should_filter = Object.keys(filters).length > 0;
 
+    // we init nc_mkm here to avoid concurrent initializations
+    await nc_mkm.init();
     let config_files_list = await P.map_with_concurrency(10, entries, async entry => {
         if (entry.name.endsWith('.json')) {
             if (wide || should_filter) {
