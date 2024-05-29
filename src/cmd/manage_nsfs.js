@@ -660,7 +660,8 @@ async function list_config_files(type, config_path, wide, show_secrets, filters)
     const should_filter = Object.keys(filters).length > 0;
 
     // we init nc_mkm here to avoid concurrent initializations
-    await nc_mkm.init();
+    if (type === TYPES.ACCOUNT) await nc_mkm.init();
+
     let config_files_list = await P.map_with_concurrency(10, entries, async entry => {
         if (entry.name.endsWith('.json')) {
             if (wide || should_filter) {
