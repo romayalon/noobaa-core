@@ -79,6 +79,8 @@ class NCMasterKeysManager {
      */
     _set_keys(master_keys) {
         if (!master_keys.active_master_key || !master_keys.master_keys_by_id) throw new RpcError('INVALID_MASTER_KEY', 'Invalid master_keys.json');
+        dbg.log0('_set_keys: master_keys', util.inspect(master_keys));
+
         for (const [master_key_id, master_key] of Object.entries(master_keys.master_keys_by_id)) {
             try {
                 this.master_keys_by_id[master_key.id] = get_buffered_master_key(master_key);
@@ -94,7 +96,9 @@ class NCMasterKeysManager {
         if (!this.active_master_key) {
             throw new RpcError('INVALID_MASTER_KEY', 'Invalid master_keys.json, couldn\'t find active master key in master_keys_by_id');
         }
-        dbg.log1(`_set_keys: master_key_manager updated successfully! active master key is: ${util.inspect(this.active_master_key)}`);
+        dbg.log0('_set_keys: this.master_keys_by_id=', this.master_keys_by_id);
+        dbg.log0('_set_keys: this.active_master_key=', this.active_master_key);
+        dbg.log0(`_set_keys: master_key_manager updated successfully! active master key is: ${util.inspect(this.active_master_key)}`);
         return this.active_master_key;
     }
 
@@ -232,16 +236,26 @@ class NCMasterKeysManager {
      */
     async _init_from_exec() {
         const command = `${config.NC_MASTER_KEYS_GET_EXECUTABLE} ${EXEC_KEY_SUFFIX}`;
+        dbg.log0('_init_from_exec command: ', command);
         for (let retries = 0; retries < config.MASTER_KEYS_EXEC_MAX_RETRIES;) {
             try {
+                dbg.log0('_init_from_exec retries: ', retries);
+                dbg.log0('_init_from_exec this.last_init_time: ', this.last_init_time);
+                dbg.log0('_init_from_exec config.NC_MASTER_KEYS_MANAGER_REFRESH_THRESHOLD: ', config.NC_MASTER_KEYS_MANAGER_REFRESH_THRESHOLD);
+
                 if (this.last_init_time &&
-                    (new Date()).getTime() - this.last_init_time > config.NC_MASTER_KEYS_MANAGER_REFRESH_THRESHOLD) return;
+                    (new Date()).getTime() - this.last_init_time > config.NC_MASTER_KEYS_MANAGER_REFRESH_THRESHOLD) {
+                        dbg.log0('_init_from_exec cache is updated nothing to do');
+                    return;
+                }
+                dbg.log0('_init_from_exec calling config.NC_MASTER_KEYS_GET_EXECUTABLE script');
                 const get_master_keys_res = await os_util.exec(command, { return_stdout: true });
                 const { status, version, data } = JSON.parse(get_master_keys_res);
                 if (status === EXEC_STATUS_OK) {
                     dbg.log0(`init_from_exec: get master keys response status=${status}, version=${version}`);
                     this._set_keys(data);
                     this.last_init_time = (new Date()).getTime();
+                    dbg.log0('_init_from_exec updating this.last_init_time', this.last_init_time);
                     return;
                 } else if (status === EXEC_STATUS_NOT_FOUND) {
                     dbg.warn(`init_from_exec: get master keys failed with status=${status}, creating a new master key`);
@@ -276,6 +290,7 @@ class NCMasterKeysManager {
      * @returns {string}
      */
     encryptSync(secret_key, master_key_id = this.active_master_key?.id) {
+        dbg.log0('encryptSync: this.master_keys_by_id=', this.master_keys_by_id, 'master_key_id=', master_key_id, 'this.master_keys_by_id[master_key_id]=', this.master_keys_by_id[master_key_id]);
         this._validate_master_key_manager(master_key_id);
         const { cipher_key, cipher_iv, encryption_type } = this.master_keys_by_id[master_key_id];
         const cipher = crypto.createCipheriv(encryption_type, cipher_key, cipher_iv);
@@ -302,6 +317,7 @@ class NCMasterKeysManager {
      * @returns {string}
      */
     decryptSync(secret_key, master_key_id) {
+        dbg.log0('decryptSync: this.master_keys_by_id=', this.master_keys_by_id, 'master_key_id=', master_key_id, 'this.master_keys_by_id[master_key_id]=', this.master_keys_by_id[master_key_id]);
         this._validate_master_key_manager(master_key_id);
         const { cipher_key, cipher_iv, encryption_type } = this.master_keys_by_id[master_key_id];
         const decipher = crypto.createDecipheriv(encryption_type, cipher_key, cipher_iv);
