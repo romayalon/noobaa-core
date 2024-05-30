@@ -383,7 +383,25 @@ async function fetch_existing_account_data(action, target, decrypt_secret_key) {
             get_config_file_path(accounts_dir_path, target.name) :
             get_symlink_config_file_path(access_keys_dir_path, target.access_keys[0].access_key);
         source = await get_config_data(config_root_backend, account_path, true);
-        if (decrypt_secret_key) source.access_keys = await nc_mkm.decrypt_access_keys(source);
+        if (decrypt_secret_key) {
+            try {
+                source.access_keys = await nc_mkm.decrypt_access_keys(source);
+            } catch (err) {
+                dbg.error('fetch_existing_account_data failed decrypting access_keys');
+                dbg.error('fetch_existing_account_data failed source.access_keys', source.access_keys);
+                dbg.error('fetch_existing_account_data failed target.new_access_key', target.new_access_key);
+                dbg.error('fetch_existing_account_data failed target.regenerate', target.regenerate);
+
+                // ROMY if update secret key/regenerate
+                if (target.secret_key || target.regenerate) {
+                    source.access_keys = source.access_keys.map(access_keys =>
+                        ({ access_key: access_keys.access_key, secret_key: undefined }));
+                    dbg.error('fetch_existing_account_data failed decrypting access_keys', source.access_keys);
+                    return;
+                }
+                throw err;
+            }
+        }
     } catch (err) {
         dbg.log1('NSFS Manage command: Could not find account', target, err);
         if (err.code === 'ENOENT') {
@@ -629,19 +647,24 @@ async function list_config_files(type, config_path, wide, show_secrets, filters)
     const should_filter = Object.keys(filters).length > 0;
 
     let config_files_list = await P.map_with_concurrency(10, entries, async entry => {
-        if (entry.name.endsWith('.json')) {
-            if (wide || should_filter) {
-                const full_path = path.join(config_path, entry.name);
-                const data = await get_config_data(config_root_backend, full_path, show_secrets || should_filter);
-                // decryption causing mkm initalization
-                // decrypt only if data has access_keys and show_secrets = true (no need to decrypt if show_secrets = false but should_filter = true)
-                if (data.access_keys && show_secrets) data.access_keys = await nc_mkm.decrypt_access_keys(data);
-                if (should_filter && !filter_list_item(type, data, filters)) return undefined;
-                // remove secrets on !show_secrets && should filter
-                return wide ? _.omit(data, show_secrets ? [] : ['access_keys']) : { name: entry.name.slice(0, entry.name.indexOf('.json')) };
+        const full_path = path.join(config_path, entry.name);
+        try {
+            if (entry.name.endsWith('.json')) {
+                if (wide || should_filter) {
+                    const data = await get_config_data(config_root_backend, full_path, show_secrets || should_filter);
+                    // decryption causing mkm initalization
+                    // decrypt only if data has access_keys and show_secrets = true (no need to decrypt if show_secrets = false but should_filter = true)
+                    if (data.access_keys && show_secrets) data.access_keys = await nc_mkm.decrypt_access_keys(data);
+                    if (should_filter && !filter_list_item(type, data, filters)) return undefined;
+                    // remove secrets on !show_secrets && should filter
+                    return wide ? _.omit(data, show_secrets ? [] : ['access_keys']) : { name: entry.name.slice(0, entry.name.indexOf('.json')) };
+                }
             } else {
                 return { name: entry.name.slice(0, entry.name.indexOf('.json')) };
             }
+        } catch (err) {
+            dbg.error('list_config_files: adding entry to the list failed', full_path, err);
+            return { name: entry.name.slice(0, entry.name.indexOf('.json')), error: err };
         }
     });
     // it inserts undefined for the entry '.noobaa-config-nsfs' and we wish to remove it
