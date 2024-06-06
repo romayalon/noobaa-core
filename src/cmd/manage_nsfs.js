@@ -102,10 +102,13 @@ async function main(argv = minimist(process.argv.slice(2))) {
     } catch (err) {
         dbg.log1('NSFS Manage command: exit on error', err.stack || err);
         const manage_err = ((err instanceof ManageCLIError) && err) ||
-            new ManageCLIError(ManageCLIError.FS_ERRORS_TO_MANAGE[err.code] ||
+            new ManageCLIError({
+                ...(ManageCLIError.FS_ERRORS_TO_MANAGE[err.code] ||
                 ManageCLIError.RPC_ERROR_TO_MANAGE[err.rpc_code] ||
-                ManageCLIError.InternalError);
-        throw_cli_error(manage_err, err.stack || err);
+                ManageCLIError.InternalError), detail: err.stack || err });
+        process.stdout.write(manage_err.to_string() + '\n', () => {
+            process.exit(0);
+        });
     }
 }
 

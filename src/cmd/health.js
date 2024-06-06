@@ -1,6 +1,7 @@
 /* Copyright (C) 2020 NooBaa */
 'use strict';
 
+const fs = require('fs');
 const dbg = require('../util/debug_module')(__filename);
 const path = require('path');
 const _ = require('lodash');
@@ -391,7 +392,7 @@ async function main(argv = minimist(process.argv.slice(2))) {
         if (deployment_type === 'nc') {
             const health = new NSFSHealth({ https_port, config_root, all_account_details, all_bucket_details });
             const health_status = await health.nc_nsfs_health();
-            process.stdout.write(JSON.stringify(health_status) + '\n', () => {
+            process.stdout.write(health_status + '\n', () => {
                 process.exit(0);
             });
         } else {
