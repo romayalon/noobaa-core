@@ -11,21 +11,21 @@ const fs_utils = require('../../../util/fs_utils');
 const nb_native = require('../../../util/nb_native');
 const { set_path_permissions_and_owner, TMP_PATH, generate_s3_policy,
     set_nc_config_dir_in_config } = require('../../system_tests/test_utils');
-const { ACTIONS, TYPES, CONFIG_SUBDIRS } = require('../../../manage_nsfs/manage_nsfs_constants');
+const { ACTIONS, TYPES, CONFIG_SUBDIRS } = require('../../../nc/constants');
 const { get_process_fs_context, is_path_exists, get_bucket_tmpdir_full_path } = require('../../../util/native_fs_utils');
-const ManageCLIError = require('../../../manage_nsfs/manage_nsfs_cli_errors').ManageCLIError;
-const { ManageCLIResponse } = require('../../../manage_nsfs/manage_nsfs_cli_responses');
+const ManageCLIError = require('../../../nc/cli/errors').ManageCLIError;
+const { ManageCLIResponse } = require('../../../nc/cli/responses');
 
 const tmp_fs_path = path.join(TMP_PATH, 'test_nc_nsfs_bucket_cli');
 const DEFAULT_FS_CONFIG = get_process_fs_context();
 
 // eslint-disable-next-line max-lines-per-function
-describe('manage nsfs cli bucket flow', () => {
+describe('noobaa cli bucket flow', () => {
 
     describe('cli create bucket', () => {
-        const config_root = path.join(tmp_fs_path, 'config_root_manage_nsfs');
-        const root_path = path.join(tmp_fs_path, 'root_path_manage_nsfs/');
-        const bucket_storage_path = path.join(tmp_fs_path, 'root_path_manage_nsfs', 'bucket1');
+        const config_root = path.join(tmp_fs_path, 'config_root_noobaa_cli');
+        const root_path = path.join(tmp_fs_path, 'root_path_noobaa_cli/');
+        const bucket_storage_path = path.join(tmp_fs_path, 'root_path_noobaa_cli', 'bucket1');
         set_nc_config_dir_in_config(config_root);
 
         const account_defaults = {
@@ -170,9 +170,9 @@ describe('manage nsfs cli bucket flow', () => {
 
     describe('cli create bucket using from_file', () => {
         const type = TYPES.BUCKET;
-        const config_root = path.join(tmp_fs_path, 'config_root_manage_nsfs1');
-        const root_path = path.join(tmp_fs_path, 'root_path_manage_nsfs1/');
-        const bucket_storage_path = path.join(tmp_fs_path, 'root_path_manage_nsfs1', 'bucket1');
+        const config_root = path.join(tmp_fs_path, 'config_root_noobaa_cli1');
+        const root_path = path.join(tmp_fs_path, 'root_path_noobaa_cli1/');
+        const bucket_storage_path = path.join(tmp_fs_path, 'root_path_noobaa_cli1', 'bucket1');
         const path_to_json_bucket_options_dir = path.join(tmp_fs_path, 'options');
         set_nc_config_dir_in_config(config_root);
 
@@ -340,9 +340,9 @@ describe('manage nsfs cli bucket flow', () => {
     });
 
     describe('cli update bucket', () => {
-        const config_root = path.join(tmp_fs_path, 'config_root_manage_nsfs2');
-        const root_path = path.join(tmp_fs_path, 'root_path_manage_nsfs2/');
-        const bucket_storage_path = path.join(tmp_fs_path, 'root_path_manage_nsfs2', 'bucket1');
+        const config_root = path.join(tmp_fs_path, 'config_root_noobaa_cli2');
+        const root_path = path.join(tmp_fs_path, 'root_path_noobaa_cli2/');
+        const bucket_storage_path = path.join(tmp_fs_path, 'root_path_noobaa_cli2', 'bucket1');
         set_nc_config_dir_in_config(config_root);
 
         const account_name = 'account_test';
@@ -509,9 +509,9 @@ describe('manage nsfs cli bucket flow', () => {
     });
 
     describe('cli delete bucket', () => {
-        const config_root = path.join(tmp_fs_path, 'config_root_manage_nsfs3');
-        const root_path = path.join(tmp_fs_path, 'root_path_manage_nsfs3/');
-        const bucket_storage_path = path.join(tmp_fs_path, 'root_path_manage_nsfs3', 'bucket1');
+        const config_root = path.join(tmp_fs_path, 'config_root_noobaa_cli3');
+        const root_path = path.join(tmp_fs_path, 'root_path_noobaa_cli3/');
+        const bucket_storage_path = path.join(tmp_fs_path, 'root_path_noobaa_cli3', 'bucket1');
         set_nc_config_dir_in_config(config_root);
 
         let bucket_temp_dir_path;
@@ -621,9 +621,9 @@ describe('manage nsfs cli bucket flow', () => {
     });
 
     describe('cli status bucket ', () => {
-        const config_root = path.join(tmp_fs_path, 'config_root_manage_nsfs4');
-        const root_path = path.join(tmp_fs_path, 'root_path_manage_nsfs4/');
-        const bucket_storage_path = path.join(tmp_fs_path, 'root_path_manage_nsfs4', 'bucket1');
+        const config_root = path.join(tmp_fs_path, 'config_root_noobaa_cli4');
+        const root_path = path.join(tmp_fs_path, 'root_path_noobaa_cli4/');
+        const bucket_storage_path = path.join(tmp_fs_path, 'root_path_noobaa_cli4', 'bucket1');
         set_nc_config_dir_in_config(config_root);
 
         const account_name = 'account_test';
@@ -681,9 +681,9 @@ describe('manage nsfs cli bucket flow', () => {
     });
 
     describe('cli list bucket', () => {
-        const config_root = path.join(tmp_fs_path, 'config_root_manage_nsfs5');
-        const root_path = path.join(tmp_fs_path, 'root_path_manage_nsfs5/');
-        const bucket_storage_path = path.join(tmp_fs_path, 'root_path_manage_nsfs5', 'bucket1');
+        const config_root = path.join(tmp_fs_path, 'config_root_noobaa_cli5');
+        const root_path = path.join(tmp_fs_path, 'root_path_noobaa_cli5/');
+        const bucket_storage_path = path.join(tmp_fs_path, 'root_path_noobaa_cli5', 'bucket1');
         set_nc_config_dir_in_config(config_root);
 
         const account_name = 'account_test';
@@ -769,7 +769,7 @@ async function exec_manage_cli(type, action, options) {
         }
     }
     flags = flags.trim();
-    const command = `node src/cmd/manage_nsfs ${type} ${action} ${flags}`;
+    const command = `node src/cmd/noobaa-cli ${type} ${action} ${flags}`;
 
     let res;
     try {

@@ -12,17 +12,17 @@ const cloud_utils = require('../util/cloud_utils');
 const native_fs_utils = require('../util/native_fs_utils');
 const mongo_utils = require('../util/mongo_utils');
 const SensitiveString = require('../util/sensitive_string');
-const ManageCLIError = require('../manage_nsfs/manage_nsfs_cli_errors').ManageCLIError;
-const ManageCLIResponse = require('../manage_nsfs/manage_nsfs_cli_responses').ManageCLIResponse;
-const manage_nsfs_glacier = require('../manage_nsfs/manage_nsfs_glacier');
-const nsfs_schema_utils = require('../manage_nsfs/nsfs_schema_utils');
-const { print_usage } = require('../manage_nsfs/manage_nsfs_help_utils');
+const ManageCLIError = require('../nc/cli/errors').ManageCLIError;
+const ManageCLIResponse = require('../nc/cli/responses').ManageCLIResponse;
+const glacier = require('../nc/cli/glacier');
+const nsfs_schema_utils = require('../nc/schema_utils');
+const { print_usage } = require('../nc/cli/help_utils');
 const { TYPES, ACTIONS, LIST_ACCOUNT_FILTERS, LIST_BUCKET_FILTERS,
-    GLACIER_ACTIONS } = require('../manage_nsfs/manage_nsfs_constants');
+    GLACIER_ACTIONS } = require('../nc/constants');
 const { throw_cli_error, write_stdout_response, get_config_file_path, get_symlink_config_file_path,
-    get_config_data, get_boolean_or_string_value, has_access_keys, set_debug_level, get_config_data_if_exists } = require('../manage_nsfs/manage_nsfs_cli_utils');
-const manage_nsfs_validations = require('../manage_nsfs/manage_nsfs_validations');
-const nc_mkm = require('../manage_nsfs/nc_master_key_manager').get_instance();
+    get_config_data, get_boolean_or_string_value, has_access_keys, set_debug_level, get_config_data_if_exists } = require('../nc/cli/utils');
+const validations = require('../nc/cli/validations');
+const nc_mkm = require('../nc/nc_master_key_manager').get_instance();
 
 const buckets_dir_name = '/buckets';
 const accounts_dir_name = '/accounts';
@@ -66,14 +66,14 @@ async function check_and_create_config_dirs() {
 async function main(argv = minimist(process.argv.slice(2))) {
     try {
         if (process.getuid() !== 0 || process.getgid() !== 0) {
-            throw new Error('Root permissions required for Manage NSFS execution.');
+            throw new Error('Root permissions required for NooBaa CLI execution.');
         }
         const type = argv._[0] || '';
         const action = argv._[1] || '';
         if (argv.help || argv.h) {
             return print_usage(type, action);
         }
-        const user_input_from_file = await manage_nsfs_validations.validate_input_types(type, action, argv);
+        const user_input_from_file = await validations.validate_input_types(type, action, argv);
         const user_input = user_input_from_file || argv;
         if (argv.debug) set_debug_level(argv.debug);
         config_root = argv.config_root ? String(argv.config_root) : config.NSFS_NC_CONF_DIR;
@@ -103,7 +103,7 @@ async function main(argv = minimist(process.argv.slice(2))) {
             throw_cli_error(ManageCLIError.InvalidType);
         }
     } catch (err) {
-        dbg.log1('NSFS Manage command: exit on error', err.stack || err);
+        dbg.log1('NooBaa CLI command: exit on error', err.stack || err);
         const manage_err = ((err instanceof ManageCLIError) && err) ||
             new ManageCLIError({
                 ...(ManageCLIError.FS_ERRORS_TO_MANAGE[err.code] ||
@@ -181,7 +181,7 @@ async function fetch_existing_bucket_data(target) {
 }
 
 async function add_bucket(data) {
-    await manage_nsfs_validations.validate_bucket_args(config_root_backend, accounts_dir_path, data, ACTIONS.ADD);
+    await validations.validate_bucket_args(config_root_backend, accounts_dir_path, data, ACTIONS.ADD);
     const fs_context = native_fs_utils.get_process_fs_context(config_root_backend);
     const bucket_conf_path = get_config_file_path(buckets_dir_path, data.name);
     const exists = await native_fs_utils.is_path_exists(fs_context, bucket_conf_path);
@@ -197,7 +197,7 @@ async function add_bucket(data) {
 }
 
 async function get_bucket_status(data) {
-    await manage_nsfs_validations.validate_bucket_args(config_root_backend, accounts_dir_path, data, ACTIONS.STATUS);
+    await validations.validate_bucket_args(config_root_backend, accounts_dir_path, data, ACTIONS.STATUS);
 
     try {
         const bucket_path = get_config_file_path(buckets_dir_path, data.name);
@@ -210,7 +210,7 @@ async function get_bucket_status(data) {
 }
 
 async function update_bucket(data) {
-    await manage_nsfs_validations.validate_bucket_args(config_root_backend, accounts_dir_path, data, ACTIONS.UPDATE);
+    await validations.validate_bucket_args(config_root_backend, accounts_dir_path, data, ACTIONS.UPDATE);
 
     const fs_context = native_fs_utils.get_process_fs_context(config_root_backend);
 
@@ -249,7 +249,7 @@ async function update_bucket(data) {
 }
 
 async function delete_bucket(data, force) {
-    await manage_nsfs_validations.validate_bucket_args(config_root_backend, accounts_dir_path, data, ACTIONS.DELETE);
+    await validations.validate_bucket_args(config_root_backend, accounts_dir_path, data, ACTIONS.DELETE);
     // we have fs_contexts: (1) fs_backend for bucket temp dir (2) config_root_backend for config files
     const fs_context_config_root_backend = native_fs_utils.get_process_fs_context(config_root_backend);
     const fs_context_fs_backend = native_fs_utils.get_process_fs_context(data.fs_backend);
@@ -393,7 +393,7 @@ async function fetch_existing_account_data(action, target, decrypt_secret_key) {
         source = await get_config_data(config_root_backend, account_path, true);
         if (decrypt_secret_key) source.access_keys = await nc_mkm.decrypt_access_keys(source);
     } catch (err) {
-        dbg.log1('NSFS Manage command: Could not find account', target, err);
+        dbg.log1('NooBaa CLI command: Could not find account', target, err);
         if (err.code === 'ENOENT') {
             if (_.isUndefined(target.name)) {
                 throw_cli_error(ManageCLIError.NoSuchAccountAccessKey, target.access_keys[0].access_key);
@@ -422,7 +422,7 @@ async function fetch_existing_account_data(action, target, decrypt_secret_key) {
 }
 
 async function add_account(data) {
-    await manage_nsfs_validations.validate_account_args(data, ACTIONS.ADD, config_root_backend, accounts_dir_path, undefined);
+    await validations.validate_account_args(data, ACTIONS.ADD, config_root_backend, accounts_dir_path, undefined);
 
     const fs_context = native_fs_utils.get_process_fs_context(config_root_backend);
     const access_key = has_access_keys(data.access_keys) ? data.access_keys[0].access_key : undefined;
@@ -458,7 +458,7 @@ async function add_account(data) {
 
 
 async function update_account(data, is_flag_iam_operate_on_root_account) {
-    await manage_nsfs_validations.validate_account_args(data, ACTIONS.UPDATE,
+    await validations.validate_account_args(data, ACTIONS.UPDATE,
         config_root_backend, accounts_dir_path, is_flag_iam_operate_on_root_account);
 
     const fs_context = native_fs_utils.get_process_fs_context(config_root_backend);
@@ -523,8 +523,8 @@ async function update_account(data, is_flag_iam_operate_on_root_account) {
 }
 
 async function delete_account(data) {
-    await manage_nsfs_validations.validate_account_args(data, ACTIONS.DELETE, config_root_backend, accounts_dir_path, undefined);
-    await manage_nsfs_validations.validate_delete_account(config_root_backend, buckets_dir_path, data.name);
+    await validations.validate_account_args(data, ACTIONS.DELETE, config_root_backend, accounts_dir_path, undefined);
+    await validations.validate_delete_account(config_root_backend, buckets_dir_path, data.name);
 
     const fs_context = native_fs_utils.get_process_fs_context(config_root_backend);
     const account_config_path = get_config_file_path(accounts_dir_path, data.name);
@@ -537,7 +537,7 @@ async function delete_account(data) {
 }
 
 async function get_account_status(data, show_secrets) {
-    await manage_nsfs_validations.validate_account_args(data, ACTIONS.STATUS, config_root_backend, accounts_dir_path, undefined);
+    await validations.validate_account_args(data, ACTIONS.STATUS, config_root_backend, accounts_dir_path, undefined);
     try {
         const account_path = _.isUndefined(data.name) ?
             get_symlink_config_file_path(access_keys_dir_path, data.access_keys[0].access_key) :
@@ -675,7 +675,7 @@ function get_access_keys(action, user_input) {
     }];
     let new_access_key;
     if (action === ACTIONS.ADD || action === ACTIONS.UPDATE || action === ACTIONS.DELETE) {
-        manage_nsfs_validations._validate_access_keys(user_input.access_key, user_input.secret_key);
+        validations._validate_access_keys(user_input.access_key, user_input.secret_key);
     }
     if (action === ACTIONS.ADD || action === ACTIONS.STATUS) {
         const regenerate = action === ACTIONS.ADD;
@@ -691,10 +691,10 @@ function get_access_keys(action, user_input) {
 
 async function whitelist_ips_management(args) {
     const ips = args.ips;
-    manage_nsfs_validations.validate_whitelist_arg(ips);
+    validations.validate_whitelist_arg(ips);
 
     const whitelist_ips = JSON.parse(ips);
-    manage_nsfs_validations.validate_whitelist_ips(whitelist_ips);
+    validations.validate_whitelist_ips(whitelist_ips);
     const config_path = path.join(config_root, 'config.json');
     try {
         const config_data = require(config_path);
@@ -703,7 +703,7 @@ async function whitelist_ips_management(args) {
         const data = JSON.stringify(config_data);
         await native_fs_utils.update_config_file(fs_context, config_root, config_path, data);
     } catch (err) {
-        dbg.error('manage_nsfs.whitelist_ips_management: Error while updation config.json,  path ' + config_path, err);
+        dbg.error('noobaa-cli.whitelist_ips_management: Error while updation config.json,  path ' + config_path, err);
         throw_cli_error(ManageCLIError.WhiteListIPUpdateFailed, config_path);
     }
     write_stdout_response(ManageCLIResponse.WhiteListIPUpdated, ips);
@@ -717,13 +717,13 @@ async function glacier_management(argv) {
 async function manage_glacier_operations(action, argv) {
     switch (action) {
         case GLACIER_ACTIONS.MIGRATE:
-            await manage_nsfs_glacier.process_migrations();
+            await glacier.process_migrations();
             break;
         case GLACIER_ACTIONS.RESTORE:
-            await manage_nsfs_glacier.process_restores();
+            await glacier.process_restores();
             break;
         case GLACIER_ACTIONS.EXPIRY:
-            await manage_nsfs_glacier.process_expiry();
+            await glacier.process_expiry();
             break;
         default:
             throw_cli_error(ManageCLIError.InvalidGlacierOperation);

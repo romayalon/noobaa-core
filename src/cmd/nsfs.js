@@ -45,8 +45,8 @@ const json_utils = require('../util/json_utils');
 const pkg = require('../../package.json');
 const AccountSDK = require('../sdk/account_sdk');
 const AccountSpaceFS = require('../sdk/accountspace_fs');
-const NoobaaEvent = require('../manage_nsfs/manage_nsfs_events_utils').NoobaaEvent;
-const { set_debug_level } = require('../manage_nsfs/manage_nsfs_cli_utils');
+const NoobaaEvent = require('../nc/events_utils').NoobaaEvent;
+const { set_debug_level } = require('../nc/cli/utils');
 
 const HELP = `
 Help:

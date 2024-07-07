@@ -3,7 +3,7 @@
 
 'use strict';
 
-const nsfs_schema_utils = require('../../../manage_nsfs/nsfs_schema_utils');
+const nsfs_schema_utils = require('../../../nc/schema_utils');
 const RpcError = require('../../../rpc/rpc_error');
 const config = require('../../../../config');
 

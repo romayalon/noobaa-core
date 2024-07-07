@@ -1,18 +1,18 @@
 /* Copyright (C) 2024 NooBaa */
 'use strict';
 
-const dbg = require('../util/debug_module')(__filename);
+const dbg = require('../../util/debug_module')(__filename);
 const _ = require('lodash');
 const path = require('path');
-const nb_native = require('../util/nb_native');
-const native_fs_utils = require('../util/native_fs_utils');
-const ManageCLIError = require('../manage_nsfs/manage_nsfs_cli_errors').ManageCLIError;
-const NSFS_CLI_ERROR_EVENT_MAP = require('../manage_nsfs/manage_nsfs_cli_errors').NSFS_CLI_ERROR_EVENT_MAP;
-const ManageCLIResponse = require('../manage_nsfs/manage_nsfs_cli_responses').ManageCLIResponse;
-const NSFS_CLI_SUCCESS_EVENT_MAP = require('../manage_nsfs/manage_nsfs_cli_responses').NSFS_CLI_SUCCESS_EVENT_MAP;
-const { BOOLEAN_STRING_VALUES } = require('../manage_nsfs/manage_nsfs_constants');
-const NoobaaEvent = require('../manage_nsfs/manage_nsfs_events_utils').NoobaaEvent;
-const mongo_utils = require('../util/mongo_utils');
+const nb_native = require('../../util/nb_native');
+const native_fs_utils = require('../../util/native_fs_utils');
+const ManageCLIError = require('./errors').ManageCLIError;
+const NSFS_CLI_ERROR_EVENT_MAP = require('./errors').NSFS_CLI_ERROR_EVENT_MAP;
+const ManageCLIResponse = require('./responses').ManageCLIResponse;
+const NSFS_CLI_SUCCESS_EVENT_MAP = require('./responses').NSFS_CLI_SUCCESS_EVENT_MAP;
+const { BOOLEAN_STRING_VALUES } = require('../constants');
+const NoobaaEvent = require('../events_utils').NoobaaEvent;
+const mongo_utils = require('../../util/mongo_utils');
 
 function throw_cli_error(error, detail, event_arg) {
     const error_event = NSFS_CLI_ERROR_EVENT_MAP[error.code];
@@ -152,9 +152,9 @@ function set_debug_level(debug) {
  * generate_id will generate an id that we use to identify entities (such as account, bucket, etc.). 
  */
 // TODO: 
-// - reuse this function in NC NSFS where we used the mongo_utils module
+// - reuse this function in NooBaa NC where we used the mongo_utils module
 // - this function implantation should be db_client.new_object_id(), 
-//   but to align with manage nsfs we won't change it now
+//   but to align with noobaa-cli we won't change it now
 function generate_id() {
     return mongo_utils.mongoObjectId();
 }

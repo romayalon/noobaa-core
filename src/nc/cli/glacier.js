@@ -2,12 +2,12 @@
 'use strict';
 
 const path = require('path');
-const { PersistentLogger } = require('../util/persistent_logger');
-const config = require('../../config');
-const nb_native = require('../util/nb_native');
-const { GlacierBackend } = require('../sdk/nsfs_glacier_backend/backend');
-const { getGlacierBackend } = require('../sdk/nsfs_glacier_backend/helper');
-const native_fs_utils = require('../util/native_fs_utils');
+const { PersistentLogger } = require('../../util/persistent_logger');
+const config = require('../../../config');
+const nb_native = require('../../util/nb_native');
+const { GlacierBackend } = require('../../sdk/nsfs_glacier_backend/backend');
+const { getGlacierBackend } = require('../../sdk/nsfs_glacier_backend/helper');
+const native_fs_utils = require('../../util/native_fs_utils');
 
 const CLUSTER_LOCK = 'cluster.lock';
 const SCAN_LOCK = 'scan.lock';
@@ -32,7 +32,7 @@ async function process_migrations() {
  * run_tape_migrations reads the migration WALs and attempts to migrate the
  * files mentioned in the WAL.
  * @param {nb.NativeFSContext} fs_context
- * @param {import('../sdk/nsfs_glacier_backend/backend').GlacierBackend} backend
+ * @param {import('../../sdk/nsfs_glacier_backend/backend').GlacierBackend} backend
  */
 async function run_glacier_migrations(fs_context, backend) {
     await run_glacier_operation(fs_context, GlacierBackend.MIGRATE_WAL_NAME, backend.migrate.bind(backend));
@@ -59,7 +59,7 @@ async function process_restores() {
  * run_tape_restore reads the restore WALs and attempts to restore the
  * files mentioned in the WAL.
  * @param {nb.NativeFSContext} fs_context 
- * @param {import('../sdk/nsfs_glacier_backend/backend').GlacierBackend} backend
+ * @param {import('../../sdk/nsfs_glacier_backend/backend').GlacierBackend} backend
  */
 async function run_glacier_restore(fs_context, backend) {
     await run_glacier_operation(fs_context, GlacierBackend.RESTORE_WAL_NAME, backend.restore.bind(backend));

@@ -8,17 +8,17 @@ const dbg = require('../util/debug_module')(__filename);
 const P = require('../util/promise');
 const nb_native = require('../util/nb_native');
 const native_fs_utils = require('../util/native_fs_utils');
-const { CONFIG_SUBDIRS } = require('../manage_nsfs/manage_nsfs_constants');
+const { CONFIG_SUBDIRS } = require('../nc/constants');
 const { create_arn, IAM_DEFAULT_PATH, get_action_message_title,
     check_iam_path_was_set, MAX_NUMBER_OF_ACCESS_KEYS,
     access_key_status_enum, identity_enum } = require('../endpoint/iam/iam_utils');
-const nsfs_schema_utils = require('../manage_nsfs/nsfs_schema_utils');
+const nsfs_schema_utils = require('../nc/schema_utils');
 const IamError = require('../endpoint/iam/iam_errors').IamError;
 const cloud_utils = require('../util/cloud_utils');
 const SensitiveString = require('../util/sensitive_string');
 const { get_symlink_config_file_path, get_config_file_path, get_config_data,
-    generate_id } = require('../manage_nsfs/manage_nsfs_cli_utils');
-const nc_mkm = require('../manage_nsfs/nc_master_key_manager').get_instance();
+    generate_id } = require('../nc/cli/utils');
+const nc_mkm = require('../nc/nc_master_key_manager').get_instance();
 const { account_cache } = require('./object_sdk');
 
 const entity_enum = Object.freeze({
@@ -26,7 +26,7 @@ const entity_enum = Object.freeze({
     ACCESS_KEY: 'ACCESS_KEY',
 });
 
-// TODO - rename (the typo), move and reuse in manage_nsfs
+// TODO - rename (the typo), move and reuse in noobaa-cli
 const acounts_dir_relative_path = '../accounts/';
 
 ////////////////////
@@ -592,7 +592,7 @@ class AccountSpaceFS {
             throw new IamError(IamError.NotAuthorized);
         }
 
-    // based on the function from manage_nsfs
+    // based on the function from noobaa-cli
     async _list_config_files_for_users(requesting_account, iam_path_prefix) {
         const entries = await nb_native().fs.readdir(this.fs_context, this.accounts_dir);
         const should_filter_by_prefix = check_iam_path_was_set(iam_path_prefix);
@@ -816,7 +816,7 @@ class AccountSpaceFS {
         return { is_root_account_or_user_on_itself, requester };
     }
 
-    // TODO reuse set_access_keys from manage_nsfs
+    // TODO reuse set_access_keys from noobaa-cli
     _generate_access_key() {
         let generated_access_key;
         let generated_secret_key;

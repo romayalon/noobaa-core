@@ -13,20 +13,20 @@ const fs_utils = require('../../util/fs_utils');
 const config_module = require('../../../config');
 const nb_native = require('../../util/nb_native');
 const { get_process_fs_context } = require('../../util/native_fs_utils');
-const { ManageCLIError } = require('../../manage_nsfs/manage_nsfs_cli_errors');
-const { ManageCLIResponse } = require('../../manage_nsfs/manage_nsfs_cli_responses');
+const { ManageCLIError } = require('../../nc/cli/errors');
+const { ManageCLIResponse } = require('../../nc/cli/responses');
 const { exec_manage_cli, generate_s3_policy, create_fs_user_by_platform, delete_fs_user_by_platform,
     set_path_permissions_and_owner, TMP_PATH, set_nc_config_dir_in_config } = require('../system_tests/test_utils');
-const { TYPES, ACTIONS, CONFIG_SUBDIRS } = require('../../manage_nsfs/manage_nsfs_constants');
-const nc_mkm = require('../../manage_nsfs/nc_master_key_manager').get_instance();
+const { TYPES, ACTIONS, CONFIG_SUBDIRS } = require('../../nc/constants');
+const nc_mkm = require('../../nc/nc_master_key_manager').get_instance();
 
 const tmp_fs_path = path.join(TMP_PATH, 'test_bucketspace_fs');
 const DEFAULT_FS_CONFIG = get_process_fs_context();
 
-mocha.describe('manage_nsfs cli', function() {
+mocha.describe('noobaa cli', function() {
 
-    const config_root = path.join(tmp_fs_path, 'config_root_manage_nsfs');
-    const root_path = path.join(tmp_fs_path, 'root_path_manage_nsfs/');
+    const config_root = path.join(tmp_fs_path, 'config_root_noobaa_cli');
+    const root_path = path.join(tmp_fs_path, 'root_path_noobaa_cli/');
     set_nc_config_dir_in_config(config_root);
     // TODO: needed for NC_CORETEST FLOW - should be handled better
     const nc_coretes_location = config.NC_MASTER_KEYS_FILE_LOCATION;

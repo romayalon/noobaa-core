@@ -17,8 +17,8 @@ const SensitiveString = require('../../util/sensitive_string');
 const NamespaceFS = require('../../sdk/namespace_fs');
 const BucketSpaceFS = require('../../sdk/bucketspace_fs');
 const { TMP_PATH } = require('../system_tests/test_utils');
-const { CONFIG_SUBDIRS } = require('../../manage_nsfs/manage_nsfs_constants');
-const nc_mkm = require('../../manage_nsfs/nc_master_key_manager').get_instance();
+const { CONFIG_SUBDIRS } = require('../../nc/constants');
+const nc_mkm = require('../../nc/nc_master_key_manager').get_instance();
 
 
 const test_bucket = 'bucket1';

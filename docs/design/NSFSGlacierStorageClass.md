@@ -7,7 +7,7 @@
 ## Approach
 The current approach to support `GLACIER` storage class is to separate the implementation into two parts.
 Main NooBaa process only manages metadata on the files/objects via extended attributes and maintains relevant
-data in a log file. Another process (currently `manage_nsfs`) manages the actual movements of the files across
+data in a log file. Another process (currently `noobaa-cli`) manages the actual movements of the files across
 disk and tape.
 
 There are 3 primary flows of concern and this document will discuss all 3 of them:

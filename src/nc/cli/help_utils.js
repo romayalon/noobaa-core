@@ -1,7 +1,7 @@
 /* Copyright (C) 2024 NooBaa */
 'use strict';
 
-const { TYPES, ACTIONS, GLACIER_ACTIONS } = require('./manage_nsfs_constants');
+const { TYPES, ACTIONS, GLACIER_ACTIONS } = require('../constants');
 
 const HELP = `
 Help:

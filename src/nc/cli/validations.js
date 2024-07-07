@@ -1,22 +1,22 @@
 /* Copyright (C) 2024 NooBaa */
 'use strict';
 
-const config = require('../../config');
-const dbg = require('../util/debug_module')(__filename);
+const config = require('../../../config');
+const dbg = require('../../util/debug_module')(__filename);
 const _ = require('lodash');
 const path = require('path');
 const net = require('net');
-const P = require('../util/promise');
-const nb_native = require('../util/nb_native');
-const string_utils = require('../util/string_utils');
-const native_fs_utils = require('../util/native_fs_utils');
-const ManageCLIError = require('../manage_nsfs/manage_nsfs_cli_errors').ManageCLIError;
-const bucket_policy_utils = require('../endpoint/s3/s3_bucket_policy_utils');
+const P = require('../../util/promise');
+const nb_native = require('../../util/nb_native');
+const string_utils = require('../../util/string_utils');
+const native_fs_utils = require('../../util/native_fs_utils');
+const ManageCLIError = require('./errors').ManageCLIError;
+const bucket_policy_utils = require('../../endpoint/s3/s3_bucket_policy_utils');
 const { throw_cli_error, get_config_file_path, get_bucket_owner_account,
     get_config_data, get_options_from_file, get_boolean_or_string_value,
-    check_root_account_owns_user, get_config_data_if_exists } = require('../manage_nsfs/manage_nsfs_cli_utils');
+    check_root_account_owns_user, get_config_data_if_exists } = require('./utils');
 const { TYPES, ACTIONS, VALID_OPTIONS, OPTION_TYPE, FROM_FILE, BOOLEAN_STRING_VALUES, BOOLEAN_STRING_OPTIONS,
-    GLACIER_ACTIONS, LIST_UNSETABLE_OPTIONS, ANONYMOUS } = require('../manage_nsfs/manage_nsfs_constants');
+    GLACIER_ACTIONS, LIST_UNSETABLE_OPTIONS, ANONYMOUS } = require('../constants');
 
 /////////////////////////////
 //// GENERAL VALIDATIONS ////

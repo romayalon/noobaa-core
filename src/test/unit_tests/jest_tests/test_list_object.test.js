@@ -13,7 +13,7 @@ const tmp_fs_path = path.join(TMP_PATH, 'test_list_object');
 const DEFAULT_FS_CONFIG = get_process_fs_context();
 
 // eslint-disable-next-line max-lines-per-function
-describe('manage list objct flow', () => {
+describe('noobaa-cli list objct flow', () => {
     describe('Telldir and Seekdir implementation', () => {
         const list_dir_root = path.join(tmp_fs_path, 'list_dir_root');
         const list_dir_1_1 = path.join(list_dir_root, 'list_dir_1_1');

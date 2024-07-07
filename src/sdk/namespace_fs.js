@@ -23,7 +23,7 @@ const LRUCache = require('../util/lru_cache');
 const nb_native = require('../util/nb_native');
 const RpcError = require('../rpc/rpc_error');
 const { S3Error } = require('../endpoint/s3/s3_errors');
-const NoobaaEvent = require('../manage_nsfs/manage_nsfs_events_utils').NoobaaEvent;
+const NoobaaEvent = require('../nc/events_utils').NoobaaEvent;
 const { PersistentLogger } = require('../util/persistent_logger');
 const { GlacierBackend } = require('./nsfs_glacier_backend/backend');
 

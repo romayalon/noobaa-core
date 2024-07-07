@@ -15,21 +15,21 @@ const nb_native = require('../../../util/nb_native');
 const { set_path_permissions_and_owner, create_fs_user_by_platform,
     delete_fs_user_by_platform, TMP_PATH, set_nc_config_dir_in_config } = require('../../system_tests/test_utils');
 const { get_process_fs_context, update_config_file } = require('../../../util/native_fs_utils');
-const { TYPES, ACTIONS, CONFIG_SUBDIRS, ANONYMOUS } = require('../../../manage_nsfs/manage_nsfs_constants');
-const ManageCLIError = require('../../../manage_nsfs/manage_nsfs_cli_errors').ManageCLIError;
-const ManageCLIResponse = require('../../../manage_nsfs/manage_nsfs_cli_responses').ManageCLIResponse;
+const { TYPES, ACTIONS, CONFIG_SUBDIRS, ANONYMOUS } = require('../../../nc/constants');
+const ManageCLIError = require('../../../nc/cli/errors').ManageCLIError;
+const ManageCLIResponse = require('../../../nc/cli/responses').ManageCLIResponse;
 
 const tmp_fs_path = path.join(TMP_PATH, 'test_nc_nsfs_account_cli');
 const DEFAULT_FS_CONFIG = get_process_fs_context();
-const nc_mkm = require('../../../manage_nsfs/nc_master_key_manager').get_instance();
+const nc_mkm = require('../../../nc/nc_master_key_manager').get_instance();
 const timeout = 50000;
 const config = require('../../../../config');
 
 // eslint-disable-next-line max-lines-per-function
-describe('manage nsfs cli account flow', () => {
+describe('noobaa cli account flow', () => {
     describe('cli create account', () => {
-        const config_root = path.join(tmp_fs_path, 'config_root_manage_nsfs');
-        const root_path = path.join(tmp_fs_path, 'root_path_manage_nsfs/');
+        const config_root = path.join(tmp_fs_path, 'config_root_noobaa_cli');
+        const root_path = path.join(tmp_fs_path, 'root_path_noobaa_cli/');
         const defaults = {
             _id: 'account1',
             type: TYPES.ACCOUNT,
@@ -181,7 +181,7 @@ describe('manage nsfs cli account flow', () => {
         it('should fail - cli create account invalid option type (path as boolean) use = in command as a flag separator', async () => {
             const { type, name } = defaults;
             const action = ACTIONS.ADD;
-            const command = `node src/cmd/manage_nsfs ${type} ${action} --config_root=${config_root} --name=${name} --new_buckets_path`;
+            const command = `node src/cmd/noobaa-cli ${type} ${action} --config_root=${config_root} --name=${name} --new_buckets_path`;
             let res;
             try {
                 res = await os_util.exec(command, { return_stdout: true });
@@ -488,8 +488,8 @@ describe('manage nsfs cli account flow', () => {
 
     describe('cli update account', () => {
         describe('cli update account (has uid and gid)', () => {
-            const config_root = path.join(tmp_fs_path, 'config_root_manage_nsfs1');
-            const root_path = path.join(tmp_fs_path, 'root_path_manage_nsfs1/');
+            const config_root = path.join(tmp_fs_path, 'config_root_noobaa_cli1');
+            const root_path = path.join(tmp_fs_path, 'root_path_noobaa_cli1/');
             const type = TYPES.ACCOUNT;
             const defaults = {
                 name: 'account1',
@@ -919,8 +919,8 @@ describe('manage nsfs cli account flow', () => {
         });
 
         describe('cli update account (has distinguished name)', () => {
-            const config_root = path.join(tmp_fs_path, 'config_root_manage_nsfs2');
-            const root_path = path.join(tmp_fs_path, 'root_path_manage_nsfs2/');
+            const config_root = path.join(tmp_fs_path, 'config_root_noobaa_cli2');
+            const root_path = path.join(tmp_fs_path, 'root_path_noobaa_cli2/');
             const type = TYPES.ACCOUNT;
             const distinguished_name = 'root';
             const defaults = {
@@ -967,8 +967,8 @@ describe('manage nsfs cli account flow', () => {
     });
 
     describe('cli list account', () => {
-        const config_root = path.join(tmp_fs_path, 'config_root_manage_nsfs3');
-        const root_path = path.join(tmp_fs_path, 'root_path_manage_nsfs3/');
+        const config_root = path.join(tmp_fs_path, 'config_root_noobaa_cli3');
+        const root_path = path.join(tmp_fs_path, 'root_path_noobaa_cli3/');
         const type = TYPES.ACCOUNT;
         const defaults = [{
             name: 'account1',
@@ -1104,7 +1104,7 @@ describe('manage nsfs cli account flow', () => {
 
         it('cli list wide (use = as flags separator)', async () => {
             const action = ACTIONS.LIST;
-            const command = `node src/cmd/manage_nsfs ${type} ${action} --config_root=${config_root} --wide`;
+            const command = `node src/cmd/noobaa-cli ${type} ${action} --config_root=${config_root} --wide`;
             let res;
             try {
                 res = await os_util.exec(command, { return_stdout: true });
@@ -1212,8 +1212,8 @@ describe('manage nsfs cli account flow', () => {
     });
 
     describe('cli delete account', () => {
-        const config_root = path.join(tmp_fs_path, 'config_root_manage_nsfs4');
-        const root_path = path.join(tmp_fs_path, 'root_path_manage_nsfs4/');
+        const config_root = path.join(tmp_fs_path, 'config_root_noobaa_cli4');
+        const root_path = path.join(tmp_fs_path, 'root_path_noobaa_cli4/');
         const defaults = {
             type: TYPES.ACCOUNT,
             name: 'account11',
@@ -1318,8 +1318,8 @@ describe('manage nsfs cli account flow', () => {
     });
 
     describe('cli status account', () => {
-        const config_root = path.join(tmp_fs_path, 'config_root_manage_nsfs5');
-        const root_path = path.join(tmp_fs_path, 'root_path_manage_nsfs5/');
+        const config_root = path.join(tmp_fs_path, 'config_root_noobaa_cli5');
+        const root_path = path.join(tmp_fs_path, 'root_path_noobaa_cli5/');
         const type = TYPES.ACCOUNT;
         const defaults = {
             name: 'account22',
@@ -1367,8 +1367,8 @@ describe('manage nsfs cli account flow', () => {
 
     describe('cli create account using from_file', () => {
         const type = TYPES.ACCOUNT;
-        const config_root = path.join(tmp_fs_path, 'config_root_manage_nsfs6');
-        const root_path = path.join(tmp_fs_path, 'root_path_manage_nsfs6/');
+        const config_root = path.join(tmp_fs_path, 'config_root_noobaa_cli6');
+        const root_path = path.join(tmp_fs_path, 'root_path_noobaa_cli6/');
 
         const path_to_json_account_options_dir = path.join(tmp_fs_path, 'options');
         const defaults = {
@@ -1854,7 +1854,7 @@ function create_command(type, action, options) {
     }
     account_flags = account_flags.trim();
 
-    const command = `node src/cmd/manage_nsfs ${type} ${action} ${account_flags}`;
+    const command = `node src/cmd/noobaa-cli ${type} ${action} ${account_flags}`;
     return command;
 }
 

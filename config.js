@@ -12,7 +12,7 @@ const path = require('path');
 const assert = require('assert');
 const _ = require('lodash');
 const util = require('util');
-const nsfs_schema_utils = require('./src/manage_nsfs/nsfs_schema_utils');
+const nsfs_schema_utils = require('./src/cli/nc_schema_utils');
 const range_utils = require('./src/util/range_utils');
 
 /////////////////////////
@@ -779,11 +779,11 @@ config.NSFS_GLACIER_TAPECLOUD_BIN_DIR = '/opt/ibm/tapecloud/bin';
 config.NSFS_GLACIER_TAPECLOUD_PRESERVE_TASK_SHOW_OUTPUT = false;
 
 // NSFS_GLACIER_MIGRATE_INTERVAL indicates the interval between runs
-// of `manage_nsfs glacier migrate`
+// of `noobaa-cli glacier migrate`
 config.NSFS_GLACIER_MIGRATE_INTERVAL = 15 * 60 * 1000;
 
 // NSFS_GLACIER_RESTORE_INTERVAL indicates the interval between runs
-// of `manage_nsfs glacier restore`
+// of `noobaa-cli glacier restore`
 config.NSFS_GLACIER_RESTORE_INTERVAL = 15 * 60 * 1000;
 
 // NSFS_GLACIER_EXPIRY_RUN_TIME must be of the format hh:mm which specifies

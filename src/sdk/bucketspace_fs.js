@@ -13,16 +13,16 @@ const BucketSpaceSimpleFS = require('./bucketspace_simple_fs');
 const _ = require('lodash');
 const util = require('util');
 const bucket_policy_utils = require('../endpoint/s3/s3_bucket_policy_utils');
-const nsfs_schema_utils = require('../manage_nsfs/nsfs_schema_utils');
-const nc_mkm = require('../manage_nsfs/nc_master_key_manager').get_instance();
+const nsfs_schema_utils = require('../nc/schema_utils');
+const nc_mkm = require('../nc/nc_master_key_manager').get_instance();
 
 const mongo_utils = require('../util/mongo_utils');
-const { CONFIG_SUBDIRS } = require('../manage_nsfs/manage_nsfs_constants');
+const { CONFIG_SUBDIRS } = require('../nc/constants');
 
 const KeysSemaphore = require('../util/keys_semaphore');
 const { get_umasked_mode, isDirectory, validate_bucket_creation,
     create_config_file, delete_config_file, get_bucket_tmpdir_full_path, folder_delete } = require('../util/native_fs_utils');
-const NoobaaEvent = require('../manage_nsfs/manage_nsfs_events_utils').NoobaaEvent;
+const NoobaaEvent = require('../nc/events_utils').NoobaaEvent;
 const { anonymous_access_key } = require('./object_sdk');
 
 const dbg = require('../util/debug_module')(__filename);

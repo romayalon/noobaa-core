@@ -17,12 +17,12 @@ const fs_utils = require('../../util/fs_utils');
 const test_utils = require('../system_tests/test_utils');
 const { stat, open } = require('../../util/nb_native')().fs;
 const { get_process_fs_context } = require('../../util/native_fs_utils');
-const { TYPES } = require('../../manage_nsfs/manage_nsfs_constants');
-const ManageCLIError = require('../../manage_nsfs/manage_nsfs_cli_errors').ManageCLIError;
+const { TYPES } = require('../../nc/constants');
+const ManageCLIError = require('../../nc/cli/errors').ManageCLIError;
 const { TMP_PATH, get_coretest_path, invalid_nsfs_root_permissions,
     generate_s3_policy, create_fs_user_by_platform, delete_fs_user_by_platform,
     generate_s3_client, exec_manage_cli, generate_anon_s3_client } = require('../system_tests/test_utils');
-const nc_mkm = require('../../manage_nsfs/nc_master_key_manager').get_instance();
+const nc_mkm = require('../../nc/nc_master_key_manager').get_instance();
 
 
 const { S3 } = require('@aws-sdk/client-s3');
@@ -197,7 +197,7 @@ mocha.describe('bucket operations - namespace_fs', function() {
         console.log(inspect(res));
         let list_ok;
         if (is_nc_coretest) {
-            // in order to create a bucket in manage nsfs we need to give permission to the owner
+            // in order to create a bucket in noobaa-cli we need to give permission to the owner
             // hence we will have the gid and uid of the bucket_name
             list_ok = bucket_in_list([first_bucket], [], res.Buckets);
         } else {

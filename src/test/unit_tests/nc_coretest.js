@@ -9,7 +9,7 @@ const child_process = require('child_process');
 const argv = require('minimist')(process.argv);
 const SensitiveString = require('../../util/sensitive_string');
 const { exec_manage_cli, TMP_PATH } = require('../system_tests/test_utils');
-const { TYPES, ACTIONS } = require('../../manage_nsfs/manage_nsfs_constants');
+const { TYPES, ACTIONS } = require('../../nc/constants');
 
 // keep me first - this is setting envs that should be set before other modules are required.
 const NC_CORETEST = 'nc_coretest';
@@ -223,7 +223,7 @@ function get_https_address() {
 /**
  * get_name_by_email returns name by email
  * rpc account calls identified by email
- * manage_nsfs account commands identified by name  
+ * noobaa-cli account commands identified by name  
  */
 const get_name_by_email = email => {
     const name = email === NC_CORETEST ? NC_CORETEST : email.slice(0, email.indexOf('@'));
@@ -244,15 +244,15 @@ function get_admin_account_details() {
 }
 
 ////////////////////////////////////
-//////// ACCOUNT MANAGE CMDS ///////
+//////   ACCOUNT CLI CMDS    ///////
 ////////////////////////////////////
 
 /**
- * create_account_manage creates account using manage_nsfs and returns rpc-like result
+ * cli_create_account creates account using noobaa-cli and returns rpc-like result
  * @param {object} options
  * @return {Promise<object>}
  */
-async function create_account_manage(options) {
+async function cli_create_account(options) {
     const cli_options = {
         name: options.name,
         new_buckets_path: options.default_resource ?
@@ -276,11 +276,11 @@ async function create_account_manage(options) {
 
 
 /**
- * read_bucket_manage reads a bucket using manage_nsfs and returns rpc-like result
+ * cli_read_bucket reads a bucket using noobaa-cli and returns rpc-like result
  * @param {object} options
  * @return {Promise<object>}
  */
-async function read_bucket_manage(options) {
+async function cli_read_bucket(options) {
     const res = await exec_manage_cli(TYPES.BUCKET, ACTIONS.STATUS, options);
     const json_bucket = JSON.parse(res);
     const bucket = json_bucket.response.reply;
@@ -292,11 +292,11 @@ async function read_bucket_manage(options) {
 }
 
 /**
- * read_account_manage reads an account using manage_nsfs and returns rpc-like result
+ * cli_read_account reads an account using noobaa-cli and returns rpc-like result
  * @param {object} options
  * @return {Promise<object>}
  */
-async function read_account_manage(options) {
+async function cli_read_account(options) {
     const cli_options = { name: get_name_by_email(options.email), show_secrets: true };
     const res = await exec_manage_cli(TYPES.ACCOUNT, ACTIONS.STATUS, cli_options);
     const json_account = JSON.parse(res);
@@ -309,22 +309,22 @@ async function read_account_manage(options) {
 }
 
 /**
- * delete_account_manage deletes an account using manage_nsfs
+ * cli_delete_account deletes an account using noobaa-cli
  * @param {object} options
  * @returns {Promise<void>}
  */
-async function delete_account_manage(options) {
+async function cli_delete_account(options) {
     const cli_options = { name: get_name_by_email(options.email) };
     await exec_manage_cli(TYPES.ACCOUNT, ACTIONS.DELETE, cli_options);
 }
 
 /**
- * delete_account_by_property_manage lists accounts by property and deletes the result list using manage_nsfs
+ * cli_delete_account_by_property lists accounts by property and deletes the result list using noobaa-cli
  * @param {object} params
  * @param {object} params.nsfs_account_config
  * @returns {Promise<void>}
  */
-async function delete_account_by_property_manage({ nsfs_account_config }) {
+async function cli_delete_account_by_property({ nsfs_account_config }) {
     const list = await exec_manage_cli(TYPES.ACCOUNT, ACTIONS.LIST, nsfs_account_config);
     const accounts = JSON.parse(list).response.reply;
     for (const account of accounts) {
@@ -334,21 +334,21 @@ async function delete_account_by_property_manage({ nsfs_account_config }) {
 }
 
 /**
- * list_accounts_manage lists accounts using manage_nsfs and returns rpc-like result
+ * cli_list_accounts lists accounts using noobaa-cli and returns rpc-like result
  * @param {object} options
  * @return {Promise<object>}
  */
-async function list_accounts_manage(options) {
+async function cli_list_accounts(options) {
     const list = await exec_manage_cli(TYPES.ACCOUNT, ACTIONS.LIST, options);
     return { accounts: JSON.parse(list).response.reply };
 }
 
 /**
- * update_account_s3_access_manage updates an account using manage_nsfs
+ * cli_update_account_s3_access updates an account using noobaa-cli
  * @param {object} options
  * @returns {Promise<void>}
  */
-async function update_account_s3_access_manage(options) {
+async function cli_update_account_s3_access(options) {
     const cli_options = {
         name: get_name_by_email(options.email),
         new_buckets_path: options.default_resource ?
@@ -389,16 +389,16 @@ function create_namespace_resource_mock(options) {
 }
 
 ////////////////////////////////////
-//////// BUCKET MANAGE CMDS ////////
+//////   BUCKET CLI CMDS    ////////
 ////////////////////////////////////
 
 /**
- * create_bucket_manage creates a bucket using manage_nsfs
+ * cli_create_bucket creates a bucket using noobaa-cli
  * TODO: return create result when needed
  * @param {object} options
  * @returns {Promise<void>}
  */
-async function create_bucket_manage(options) {
+async function cli_create_bucket(options) {
     const { resource, path } = options.namespace.write_resource;
     const bucket_storage_path = p.join(nsrs_to_root_paths[resource], path);
     const cli_options = { name: options.name, owner: options.owner || NC_CORETEST, path: bucket_storage_path};
@@ -406,12 +406,12 @@ async function create_bucket_manage(options) {
 }
 
 /**
- * update_bucket_manage updates a bucket using manage_nsfs
+ * cli_update_bucket updates a bucket using noobaa-cli
  * TODO: return update result when needed
  * @param {object} options
  * @returns {Promise<void>}
  */
-async function update_bucket_manage(options) {
+async function cli_update_bucket(options) {
     const { resource, path } = options.namespace.write_resource;
     const bucket_storage_path = p.join(nsrs_to_root_paths[resource], path);
     const cli_options = { name: options.name, path: bucket_storage_path };
@@ -419,47 +419,47 @@ async function update_bucket_manage(options) {
 }
 
 /**
- * put_bucket_policy_manage updates the bucket policy of a bucket using manage_nsfs
+ * cli_put_bucket_policy updates the bucket policy of a bucket using noobaa-cli
  * @param {object} options
  * @returns {Promise<void>}
  */
-async function put_bucket_policy_manage(options) {
+async function cli_put_bucket_policy(options) {
     const cli_options = { name: options.name, bucket_policy: options.policy };
     await exec_manage_cli(TYPES.BUCKET, ACTIONS.UPDATE, cli_options);
 }
 
 /**
- * delete_bucket_manage deletes a bucket bucket using manage_nsfs
+ * cli_delete_bucket deletes a bucket bucket using noobaa-cli
  * @param {object} options
  * @returns {Promise<void>}
  */
-async function delete_bucket_manage(options) {
+async function cli_delete_bucket(options) {
     const cli_options = { name: options.name, force: true };
     await exec_manage_cli(TYPES.BUCKET, ACTIONS.DELETE, cli_options);
 }
 
-// rpc_cli_funcs_to_manage_nsfs_cli_cmds contains override functions for nc coretest
+// rpc_cli_funcs_to_noobaa_cli_cmds contains override functions for nc coretest
 // containerized rpc calls mapped to managa_nsfs/mock functions
-const rpc_cli_funcs_to_manage_nsfs_cli_cmds = {
+const rpc_cli_funcs_to_noobaa_cli_cmds = {
     create_auth_token: () => _.noop,
     account: {
-        create_account: async options => create_account_manage(options),
-        read_account: async options => read_account_manage(options),
-        delete_account: async options => delete_account_manage(options),
-        delete_account_by_property: async options => delete_account_by_property_manage(options),
-        list_accounts: async options => list_accounts_manage(options),
-        update_account_s3_access: async options => update_account_s3_access_manage(options)
+        create_account: async options => cli_create_account(options),
+        read_account: async options => cli_read_account(options),
+        delete_account: async options => cli_delete_account(options),
+        delete_account_by_property: async options => cli_delete_account_by_property(options),
+        list_accounts: async options => cli_list_accounts(options),
+        update_account_s3_access: async options => cli_update_account_s3_access(options)
     },
     pool: {
         read_namespace_resource: options => read_namespace_resource_mock(options),
         create_namespace_resource: options => create_namespace_resource_mock(options),
     },
     bucket: {
-        create_bucket: async options => create_bucket_manage(options),
-        update_bucket: async options => update_bucket_manage(options),
-        put_bucket_policy: async options => put_bucket_policy_manage(options),
-        delete_bucket: async options => delete_bucket_manage(options),
-        read_bucket: async options => read_bucket_manage(options),
+        create_bucket: async options => cli_create_bucket(options),
+        update_bucket: async options => cli_update_bucket(options),
+        put_bucket_policy: async options => cli_put_bucket_policy(options),
+        delete_bucket: async options => cli_delete_bucket(options),
+        read_bucket: async options => cli_read_bucket(options),
     }
 };
 
@@ -470,7 +470,7 @@ exports.SYSTEM = SYSTEM;
 exports.EMAIL = EMAIL;
 exports.PASSWORD = PASSWORD;
 exports.get_dbg_level = get_dbg_level;
-exports.rpc_client = rpc_cli_funcs_to_manage_nsfs_cli_cmds;
+exports.rpc_client = rpc_cli_funcs_to_noobaa_cli_cmds;
 exports.get_http_address = get_http_address;
 exports.get_https_address = get_https_address;
 exports.get_admin_account_details = get_admin_account_details;

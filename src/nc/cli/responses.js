@@ -1,7 +1,7 @@
 /* Copyright (C) 2016 NooBaa */
 'use strict';
 
-const NoobaaEvent = require('../manage_nsfs/manage_nsfs_events_utils').NoobaaEvent;
+const NoobaaEvent = require('../events_utils').NoobaaEvent;
 
 // TODO : define list & status types
 /**
@@ -36,7 +36,7 @@ class ManageCLIResponse {
     }
 }
 
-// See Manage NSFS CLI error codes docs - TODO: add docs
+// See NooBaa CLI error codes docs - TODO: add docs
 
 ///////////////////////////////
 // IPS WHITE LIST RESPONSES ///

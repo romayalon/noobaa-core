@@ -12,10 +12,10 @@ const nb_native = require('../util/nb_native');
 const native_fs_utils = require('../util/native_fs_utils');
 const { read_stream_join } = require('../util/buffer_utils');
 const { make_https_request } = require('../util/http_utils');
-const { TYPES } = require('../manage_nsfs/manage_nsfs_constants');
-const { validate_input_types } = require('../manage_nsfs/manage_nsfs_validations');
-const { get_boolean_or_string_value, set_debug_level } = require('../manage_nsfs/manage_nsfs_cli_utils');
-const ManageCLIError = require('../manage_nsfs/manage_nsfs_cli_errors').ManageCLIError;
+const { TYPES } = require('../cli/nc_constants');
+const { validate_input_types } = require('../cli/cli_validations');
+const { get_boolean_or_string_value, set_debug_level } = require('../cli/cli_utils');
+const ManageCLIError = require('../cli/cli_errors').ManageCLIError;
 
 const HELP = `
 Help:

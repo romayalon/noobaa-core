@@ -227,7 +227,7 @@ function get_coretest_path() {
 }
 
 /**
- * exec_manage_cli runs the manage_nsfs cli
+ * exec_manage_cli runs the noobaa-cli
  * @param {string} type
  * @param {string} action
  * @param {object} options
@@ -256,7 +256,7 @@ async function exec_manage_cli(type, action, options) {
     }
     flags = flags.trim();
 
-    const command = `node src/cmd/manage_nsfs ${type} ${action} ${flags}`;
+    const command = `node src/cmd/noobaa-cli ${type} ${action} ${flags}`;
     try {
         const res = await os_utils.exec(command, { return_stdout: true });
         return res;

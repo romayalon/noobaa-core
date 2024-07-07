@@ -88,7 +88,7 @@ describe('NC master key manager tests - exec store type', () => {
 
     let initial_master_key;
     let initial_master_keys_by_id;
-    const nc_mkm = require('../../../manage_nsfs/nc_master_key_manager');
+    const nc_mkm = require('../../../nc/nc_master_key_manager');
 
     const nc_mkm_instance = nc_mkm.get_instance();
 

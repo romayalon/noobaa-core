@@ -10,9 +10,9 @@ const path = require('path');
 const P = require('../../../util/promise');
 const fs_utils = require('../../../util/fs_utils');
 const { exec_manage_cli, set_path_permissions_and_owner, TMP_PATH, set_nc_config_dir_in_config } = require('../../system_tests/test_utils');
-const { TYPES, ACTIONS, CONFIG_SUBDIRS } = require('../../../manage_nsfs/manage_nsfs_constants');
-const ManageCLIError = require('../../../manage_nsfs/manage_nsfs_cli_errors').ManageCLIError;
-const ManageCLIResponse = require('../../../manage_nsfs/manage_nsfs_cli_responses').ManageCLIResponse;
+const { TYPES, ACTIONS, CONFIG_SUBDIRS } = require('../../../nc/constants');
+const ManageCLIError = require('../../../nc/cli/errors').ManageCLIError;
+const ManageCLIResponse = require('../../../nc/cli/responses').ManageCLIResponse;
 
 const tmp_fs_path = path.join(TMP_PATH, 'test_nc_nsfs_account_cli');
 const config_root = path.join(tmp_fs_path, 'config_root_account_mkm_integration');
@@ -28,7 +28,7 @@ const defaults = {
     secret_key: 'U2AYaMpU3zRDcRFWmvzgQr9MoHIAsD+3oEXAMPLE',
 };
 
-describe('manage nsfs cli account flow + fauly master key flow', () => {
+describe('noobaa cli account flow + fauly master key flow', () => {
     describe('cli account ops - master key is missing', () => {
         beforeEach(async () => {
             await setup_nc_system_and_first_account();

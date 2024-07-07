@@ -8,9 +8,9 @@ const config = require('../../../../config');
 const fs_utils = require('../../../util/fs_utils');
 const nb_native = require('../../../util/nb_native');
 const cloud_utils = require('../../../util/cloud_utils');
-const nc_mkm = require('../../../manage_nsfs/nc_master_key_manager');
+const nc_mkm = require('../../../nc/nc_master_key_manager');
 const { get_process_fs_context } = require('../../../util/native_fs_utils');
-const nsfs_schema_utils = require('../../../manage_nsfs/nsfs_schema_utils');
+const nsfs_schema_utils = require('../../../nc/schema_utils');
 
 const DEFAULT_FS_CONFIG = get_process_fs_context();
 const MASTER_KEYS_JSON_PATH = path.join(config.NSFS_NC_DEFAULT_CONF_DIR, 'master_keys.json');

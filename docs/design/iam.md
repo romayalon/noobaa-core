@@ -14,9 +14,9 @@ Ability to operate NooBaa accounts for NC NSFS using IAM API ([AWS documentation
 A created user will be able to get access to NooBaa resources (buckets, objects).
 
 ## Background
-- Currently, we create NC NSFS accounts using the Manage NSFS, which is a CLI command with root (privileged) permissions:
+- Currently, we create NC NSFS accounts using the NooBaa CLI, which is a CLI command with root (privileged) permissions:
     ```bash
-    sudo node src/cmd/manage_nsfs account add [flags]
+    noobaa-cli account add [flags]
     ```
 - The NS NSFS account is saved as a JSON file with root permissions (under the default path: `/etc/noobaa.conf.d/accounts/<name>.json`).
 - The structure of a valid account is determined by schema and validated using avj.  
@@ -72,7 +72,7 @@ Multiple root accounts, multiple users (Multi-users FS, Multi-tenant)
 ![Multiple root accounts, multiple users diagram](https://github.com/noobaa/noobaa-core/assets/57721533/ae642825-81e1-4a27-bd2d-00583da7d663)
 
 
-- Using Manage NSFS CLI to create a root account.
+- Using NooBaa CLI to create a root account.
   - We need the request to have access key id and secret key in a known account.
 - Use the access key and secret key of the root account to CreateUser
   - We will create the NSFS account with the same: `uid` and `gid` or `distinguished_name`, `new_buckets_path` and `allow_bucket_creation`.

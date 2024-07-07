@@ -42,7 +42,7 @@ const endpoint_stats_collector = require('../sdk/endpoint_stats_collector');
 const { NamespaceMonitor } = require('../server/bg_services/namespace_monitor');
 const { SemaphoreMonitor } = require('../server/bg_services/semaphore_monitor');
 const prom_reporting = require('../server/analytic_services/prometheus_reporting');
-const NoobaaEvent = require('../manage_nsfs/manage_nsfs_events_utils').NoobaaEvent;
+const NoobaaEvent = require('../nc/events_utils').NoobaaEvent;
 const cluster = /** @type {import('node:cluster').Cluster} */ (
     /** @type {unknown} */ (require('node:cluster'))
 );

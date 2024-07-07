@@ -18,9 +18,9 @@ const { get_process_fs_context } = require('../../../util/native_fs_utils');
 const { IAM_DEFAULT_PATH, access_key_status_enum } = require('../../../endpoint/iam/iam_utils');
 const fs_utils = require('../../../util/fs_utils');
 const { IamError } = require('../../../endpoint/iam/iam_errors');
-const nc_mkm = require('../../../manage_nsfs/nc_master_key_manager').get_instance();
+const nc_mkm = require('../../../nc/nc_master_key_manager').get_instance();
 const native_fs_utils = require('../../../util/native_fs_utils');
-const nsfs_schema_utils = require('../../../manage_nsfs/nsfs_schema_utils');
+const nsfs_schema_utils = require('../../../nc/schema_utils');
 
 class NoErrorThrownError extends Error {}
 

@@ -7,7 +7,7 @@ const cluster = /** @type {import('node:cluster').Cluster} */ (
 );
 const dbg = require('../util/debug_module')(__filename);
 const prom_reporting = require('../server/analytic_services/prometheus_reporting');
-const NoobaaEvent = require('../manage_nsfs/manage_nsfs_events_utils').NoobaaEvent;
+const NoobaaEvent = require('../nc/events_utils').NoobaaEvent;
 const config = require('../../config');
 
 

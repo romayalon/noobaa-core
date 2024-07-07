@@ -15,7 +15,7 @@ const os_utils = require('../../../util/os_utils');
 const config = require('../../../../config');
 const mongo_utils = require('../../../util/mongo_utils');
 const { CEPH_TEST, account_path, account_tenant_path, anonymous_account_path } = require('./test_ceph_s3_constants.js');
-const nc_mkm = require('../../../manage_nsfs/nc_master_key_manager').get_instance();
+const nc_mkm = require('../../../nc/nc_master_key_manager').get_instance();
 
 
 async function main() {
