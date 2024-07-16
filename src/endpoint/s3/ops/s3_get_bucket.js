@@ -52,7 +52,7 @@ async function get_bucket(req) {
     const reply = await req.object_sdk.list_objects(params);
 
     const field_encoder = s3_utils.get_response_field_encoder(req);
-
+    console.log('ROMY list objects Owner: ', !list_type || req.query['fetch-owner']);
     return {
         ListBucketResult: [{
             Name: req.params.bucket,
@@ -72,7 +72,7 @@ async function get_bucket(req) {
                 NextMarker: req.query.delimiter ? reply.next_marker : undefined,
             }),
         },
-        _.map(reply.objects, obj => ({
+        _.map(reply.objects, async obj => ({
             Contents: {
                 Key: field_encoder(obj.key),
                 // if the object specifies last_modified_time we use it, otherwise take create_time.
@@ -81,7 +81,7 @@ async function get_bucket(req) {
                 LastModified: s3_utils.format_s3_xml_date(obj.last_modified_time || obj.create_time),
                 ETag: `"${obj.etag}"`,
                 Size: obj.size,
-                Owner: (!list_type || req.query['fetch-owner']) && s3_utils.get_object_owner(obj, req.object_sdk),
+                Owner: (!list_type || req.query['fetch-owner']) && (await s3_utils.get_object_owner(obj, req.object_sdk)),
                 StorageClass: s3_utils.parse_storage_class(obj.storage_class),
                 RestoreStatus: get_object_restore_status(obj, restore_status_requested)
             }

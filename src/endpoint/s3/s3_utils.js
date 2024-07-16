@@ -45,7 +45,9 @@ const base64_regex = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{
  * @returns {Promise<object>}
  */
 async function get_object_owner(obj, object_sdk) {
+    console.log('ROMY1: get_object_owner', obj);
     if (obj.object_owner) {
+        console.log('ROMY2: get_object_owner', obj.object_owner);
         return Object.freeze({
             ID: obj.object_owner.id,
             DisplayName: obj.object_owner.name
@@ -53,18 +55,25 @@ async function get_object_owner(obj, object_sdk) {
     }
     const info = await object_sdk.read_bucket_sdk_config_info(obj.bucket);
     if (info) {
+        console.log('ROMY3: info.bucket_info', info.bucket_info);
+
         if (info.bucket_info && info.bucket_info.owner_account) {
+            console.log('ROMY4: info.bucket_info', info.bucket_info, 'info.bucket_owner: ', info.bucket_owner.unwrap());
+
             return Object.freeze({
                 ID: info.bucket_info.owner_account.id,
                 DisplayName: info.bucket_owner.unwrap()
             });
         } else {
+            console.log('ROMY5: info.owner_account', info.owner_account, 'info.bucket_owner.unwrap() ', info.bucket_owner.unwrap());
             return Object.freeze({
                 ID: info.owner_account.id,
                 DisplayName: info.bucket_owner.unwrap()
             });
         }
     }
+    console.log('ROMY6: DEFAULT_S3_USER', DEFAULT_S3_USER);
+
     return DEFAULT_S3_USER;
 }
 
