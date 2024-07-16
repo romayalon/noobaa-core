@@ -48,21 +48,21 @@ async function get_object_owner(obj, object_sdk) {
     if (obj.object_owner) {
         return Object.freeze({
             ID: obj.object_owner.id,
-            DisplayName: obj.object_owner.name,
+            DisplayName: obj.object_owner.name
         });
     }
     const info = await object_sdk.read_bucket_sdk_config_info(obj.bucket);
     if (info) {
         if (info.bucket_info && info.bucket_info.owner_account) {
-            return {
-                name: info.bucket_owner.unwrap(),
-                id: info.bucket_info.owner_account.id,
-            };
+            return Object.freeze({
+                ID: info.bucket_info.owner_account.id,
+                DisplayName: info.bucket_owner.unwrap()
+            });
         } else {
-            return {
-                name: info.bucket_owner.unwrap(),
-                id: info.owner_account.id,
-            };
+            return Object.freeze({
+                ID: info.owner_account.id,
+                DisplayName: info.bucket_owner.unwrap()
+            });
         }
     }
     return DEFAULT_S3_USER;
