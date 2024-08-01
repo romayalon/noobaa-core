@@ -10,9 +10,10 @@ const P = require('../../../util/promise');
 const os_util = require('../../../util/os_utils');
 const fs_utils = require('../../../util/fs_utils');
 const nb_native = require('../../../util/nb_native');
+const { CONFIG_SUBDIRS } = require('../../../sdk/config_dir');
+const { TYPES, ACTIONS } = require('../../../manage_nsfs/manage_nsfs_constants');
 const { TMP_PATH, set_nc_config_dir_in_config } = require('../../system_tests/test_utils');
 const { get_process_fs_context } = require('../../../util/native_fs_utils');
-const { TYPES, ACTIONS, CONFIG_SUBDIRS } = require('../../../manage_nsfs/manage_nsfs_constants');
 const ManageCLIError = require('../../../manage_nsfs/manage_nsfs_cli_errors').ManageCLIError;
 const ManageCLIResponse = require('../../../manage_nsfs/manage_nsfs_cli_responses').ManageCLIResponse;
 
@@ -35,7 +36,7 @@ describe('manage nsfs cli anonymous account flow', () => {
             gid: 999,
         };
         beforeAll(async () => {
-            await P.all(_.map([CONFIG_SUBDIRS.ACCOUNTS, CONFIG_SUBDIRS.ACCESS_KEYS], async dir =>
+            await P.all(_.map([CONFIG_SUBDIRS.ACCOUNTS_BY_ID, CONFIG_SUBDIRS.ACCESS_KEYS], async dir =>
                 fs_utils.create_fresh_path(`${config_root}/${dir}`)));
             await fs_utils.create_fresh_path(root_path);
             set_nc_config_dir_in_config(config_root);
@@ -142,7 +143,7 @@ describe('manage nsfs cli anonymous account flow', () => {
             gid: 999,
         };
         beforeAll(async () => {
-            await P.all(_.map([CONFIG_SUBDIRS.ACCOUNTS, CONFIG_SUBDIRS.ACCESS_KEYS], async dir =>
+            await P.all(_.map([CONFIG_SUBDIRS.ACCOUNTS_BY_ID, CONFIG_SUBDIRS.ACCESS_KEYS], async dir =>
                 fs_utils.create_fresh_path(`${config_root}/${dir}`)));
             await fs_utils.create_fresh_path(root_path);
             set_nc_config_dir_in_config(config_root);
@@ -202,7 +203,7 @@ describe('manage nsfs cli anonymous account flow', () => {
             gid: 999,
         };
         beforeAll(async () => {
-            await P.all(_.map([CONFIG_SUBDIRS.ACCOUNTS, CONFIG_SUBDIRS.ACCESS_KEYS], async dir =>
+            await P.all(_.map([CONFIG_SUBDIRS.ACCOUNTS_BY_ID, CONFIG_SUBDIRS.ACCESS_KEYS], async dir =>
                 fs_utils.create_fresh_path(`${config_root}/${dir}`)));
             await fs_utils.create_fresh_path(root_path);
             set_nc_config_dir_in_config(config_root);
@@ -251,7 +252,7 @@ describe('manage nsfs cli anonymous account flow', () => {
             gid: 999,
         };
         beforeAll(async () => {
-            await P.all(_.map([CONFIG_SUBDIRS.ACCOUNTS, CONFIG_SUBDIRS.ACCESS_KEYS], async dir =>
+            await P.all(_.map([CONFIG_SUBDIRS.ACCOUNTS_BY_ID, CONFIG_SUBDIRS.ACCESS_KEYS], async dir =>
                 fs_utils.create_fresh_path(`${config_root}/${dir}`)));
             await fs_utils.create_fresh_path(root_path);
             set_nc_config_dir_in_config(config_root);

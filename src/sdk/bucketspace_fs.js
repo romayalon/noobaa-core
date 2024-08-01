@@ -17,7 +17,7 @@ const nsfs_schema_utils = require('../manage_nsfs/nsfs_schema_utils');
 const nc_mkm = require('../manage_nsfs/nc_master_key_manager').get_instance();
 
 const mongo_utils = require('../util/mongo_utils');
-const { CONFIG_SUBDIRS } = require('../manage_nsfs/manage_nsfs_constants');
+const { CONFIG_SUBDIRS } = require('../sdk/config_dir');
 
 const KeysSemaphore = require('../util/keys_semaphore');
 const { get_umasked_mode, isDirectory, validate_bucket_creation,
@@ -36,7 +36,8 @@ class BucketSpaceFS extends BucketSpaceSimpleFS {
     constructor({config_root}, stats) {
         super({ fs_root: ''});
         this.fs_root = '';
-        this.accounts_dir = path.join(config_root, CONFIG_SUBDIRS.ACCOUNTS);
+        this.old_accounts_dir = path.join(config_root, CONFIG_SUBDIRS.ACCOUNTS);
+        this.accounts_by_id_dir = path.join(config_root, CONFIG_SUBDIRS.ACCOUNTS_BY_ID);
         this.root_accounts_dir = path.join(config_root, CONFIG_SUBDIRS.ROOT_ACCOUNTS);
         this.access_keys_dir = path.join(config_root, CONFIG_SUBDIRS.ACCESS_KEYS);
         this.bucket_schema_dir = path.join(config_root, CONFIG_SUBDIRS.BUCKETS);
@@ -76,11 +77,15 @@ class BucketSpaceFS extends BucketSpaceSimpleFS {
         if (await is_path_exists(this.fs_context, iam_account_path)) {
             return iam_account_path;
         }
-        return this._get_account_config_path(name);
+        return this._get_account_old_config_path(name);
     }
 
-    _get_account_config_path(id) {
-        return path.join(this.accounts_dir, id + '.json');
+    _get_account_old_config_path(name) {
+        return path.join(this.old_accounts_dir, name + '.json');
+    }
+
+    _get_account_config_path_by_id(id) {
+        return path.join(this.accounts_by_id_dir, id + '.json');
     }
 
     _get_access_keys_config_path(access_key) {
@@ -98,7 +103,7 @@ class BucketSpaceFS extends BucketSpaceSimpleFS {
     }
 
     async _get_account_by_id(id) {
-        const account_config_path = this._get_account_config_path(id);
+        const account_config_path = this._get_account_config_path_by_id(id);
         try {
             await nb_native().fs.stat(this.fs_context, account_config_path);
             return true;
@@ -149,7 +154,7 @@ class BucketSpaceFS extends BucketSpaceSimpleFS {
                 dbg.warn('BucketSpaceFS: one or more bucket config check is failed for bucket : ', name);
             }
             //also get bucket's account
-            const account_config_path = this._get_account_config_path(bucket.owner_account);
+            const account_config_path = this._get_account_config_path_by_id(bucket.owner_account);
             data = (await nb_native().fs.readFile(this.fs_context, account_config_path)).data;
             const account = JSON.parse(data.toString());
             nsfs_schema_utils.validate_account_schema(account);
@@ -668,7 +673,7 @@ class BucketSpaceFS extends BucketSpaceSimpleFS {
             bucket_to_validate);
             nsfs_schema_utils.validate_bucket_schema(bucket_to_validate);
             await bucket_policy_utils.validate_s3_policy(bucket.s3_policy, bucket.name,
-                async principal => await get_account_by_principal(this.fs_context, this.accounts_dir,
+                async principal => await get_account_by_principal(this.fs_context, this.accounts_by_id_dir,
                     this.root_accounts_dir, principal.unwrap())
             );
             const update_bucket = JSON.stringify(bucket);

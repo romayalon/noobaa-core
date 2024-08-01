@@ -30,12 +30,6 @@ const DIAGNOSE_ACTIONS = {
     METRICS: 'metrics'
 };
 
-const CONFIG_SUBDIRS = {
-    ACCOUNTS: 'accounts',
-    ROOT_ACCOUNTS: 'root_accounts',
-    BUCKETS: 'buckets',
-    ACCESS_KEYS: 'access_keys'
-};
 
 const GLOBAL_CONFIG_ROOT = 'config_root';
 const GLOBAL_CONFIG_OPTIONS = new Set([GLOBAL_CONFIG_ROOT, 'config_root_backend', 'debug']);
@@ -141,7 +135,6 @@ exports.TYPES = TYPES;
 exports.ACTIONS = ACTIONS;
 exports.GLACIER_ACTIONS = GLACIER_ACTIONS;
 exports.DIAGNOSE_ACTIONS = DIAGNOSE_ACTIONS;
-exports.CONFIG_SUBDIRS = CONFIG_SUBDIRS;
 exports.VALID_OPTIONS = VALID_OPTIONS;
 exports.OPTION_TYPE = OPTION_TYPE;
 exports.FROM_FILE = FROM_FILE;

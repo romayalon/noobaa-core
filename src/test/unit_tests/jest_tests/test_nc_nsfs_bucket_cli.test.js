@@ -9,9 +9,10 @@ const path = require('path');
 const os_util = require('../../../util/os_utils');
 const fs_utils = require('../../../util/fs_utils');
 const nb_native = require('../../../util/nb_native');
+const { CONFIG_SUBDIRS } = require('../../../sdk/config_dir');
 const { set_path_permissions_and_owner, TMP_PATH, generate_s3_policy,
     set_nc_config_dir_in_config } = require('../../system_tests/test_utils');
-const { ACTIONS, TYPES, CONFIG_SUBDIRS } = require('../../../manage_nsfs/manage_nsfs_constants');
+const { ACTIONS, TYPES } = require('../../../manage_nsfs/manage_nsfs_constants');
 const { get_process_fs_context, is_path_exists, get_bucket_tmpdir_full_path } = require('../../../util/native_fs_utils');
 const ManageCLIError = require('../../../manage_nsfs/manage_nsfs_cli_errors').ManageCLIError;
 const { ManageCLIResponse } = require('../../../manage_nsfs/manage_nsfs_cli_responses');

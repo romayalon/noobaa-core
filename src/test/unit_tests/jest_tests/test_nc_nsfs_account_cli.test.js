@@ -13,10 +13,11 @@ const P = require('../../../util/promise');
 const os_util = require('../../../util/os_utils');
 const fs_utils = require('../../../util/fs_utils');
 const nb_native = require('../../../util/nb_native');
+const { CONFIG_SUBDIRS } = require('../../../sdk/config_dir');
 const { set_path_permissions_and_owner, create_fs_user_by_platform,
     delete_fs_user_by_platform, TMP_PATH, set_nc_config_dir_in_config } = require('../../system_tests/test_utils');
 const { get_process_fs_context, update_config_file } = require('../../../util/native_fs_utils');
-const { TYPES, ACTIONS, CONFIG_SUBDIRS, ANONYMOUS } = require('../../../manage_nsfs/manage_nsfs_constants');
+const { TYPES, ACTIONS, ANONYMOUS } = require('../../../manage_nsfs/manage_nsfs_constants');
 const ManageCLIError = require('../../../manage_nsfs/manage_nsfs_cli_errors').ManageCLIError;
 const ManageCLIResponse = require('../../../manage_nsfs/manage_nsfs_cli_responses').ManageCLIResponse;
 
@@ -1342,7 +1343,7 @@ describe('manage nsfs cli account flow', () => {
             // currently we don't have the ability to create 2 access keys in the noobaa-cli
             // therefore, we will mock the config as there are 2 access keys objects
             // and also create the symlink for the one that manually added
-            const account = await read_config_file(config_root, CONFIG_SUBDIRS.ACCOUNTS, account_id);
+            const account = await read_config_file(config_root, CONFIG_SUBDIRS.ACCOUNTS_BY_ID, account_id);
             const account_with_2_access_keys_objects = _.cloneDeep(account);
             const access_key2 = 'AIGiFAnjaaE7OKD5N7hA';
             const secret_key2 = 'A2AYaMpU3zRDcRFWmvzgQr9MoHIAsD+3AEXAMPLE';
@@ -1352,10 +1353,10 @@ describe('manage nsfs cli account flow', () => {
                 creation_date: new Date().toISOString(),
                 deactivated: false,
             });
-            const account_config_path = path.join(config_root, CONFIG_SUBDIRS.ACCOUNTS, account_id + '.json');
-            await update_config_file(DEFAULT_FS_CONFIG, CONFIG_SUBDIRS.ACCOUNTS,
+            const account_config_path = path.join(config_root, CONFIG_SUBDIRS.ACCOUNTS_BY_ID, account_id + '.json');
+            await update_config_file(DEFAULT_FS_CONFIG, CONFIG_SUBDIRS.ACCOUNTS_BY_ID,
                 account_config_path, JSON.stringify(account_with_2_access_keys_objects));
-            const account_config_relative_path = path.join(config_root, '../' + CONFIG_SUBDIRS.ACCOUNTS + '/', name + '.json');
+            const account_config_relative_path = path.join(config_root, '../' + CONFIG_SUBDIRS.ACCOUNTS_BY_ID + '/', name + '.json');
             const account_config_access_key_path = path.join(config_root, CONFIG_SUBDIRS.ACCESS_KEYS, access_key2 + '.symlink');
             await nb_native().fs.symlink(DEFAULT_FS_CONFIG, account_config_relative_path, account_config_access_key_path);
 
@@ -1365,7 +1366,7 @@ describe('manage nsfs cli account flow', () => {
             const res = await exec_manage_cli(type, action, account_options);
             const res_json = JSON.parse(res.trim());
             expect(res_json.response.code).toBe(ManageCLIResponse.AccountDeleted.code);
-            const config_path = path.join(config_root, CONFIG_SUBDIRS.ACCOUNTS, account_id + '.json');
+            const config_path = path.join(config_root, CONFIG_SUBDIRS.ACCOUNTS_BY_ID, account_id + '.json');
             await fs_utils.file_must_not_exist(config_path);
             const symlink_config_path1 = path.join(config_root, CONFIG_SUBDIRS.ACCESS_KEYS, defaults.access_key + '.symlink');
             await fs_utils.file_must_not_exist(symlink_config_path1);

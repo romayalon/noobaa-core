@@ -4,7 +4,7 @@
 const minimist = require('minimist');
 const {statSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, symlinkSync, rmSync} = require('fs');
 const {join} = require('path');
-const { CONFIG_SUBDIRS } = require('../../../manage_nsfs/manage_nsfs_constants');
+const { CONFIG_SUBDIRS } = require('../../../sdk/config_dir');
 const config = require('../../../../config');
 
 const dbg = require('../../../util/debug_module')(__filename);
@@ -77,8 +77,8 @@ function handle_account_file(dir_ent, conf_dir) {
     dbg.log("Renaming account file, old =", dir_ent.name, ", new =", account._id + ".json");
     renameSync(filename, account_new_name);
 
-    const symlink_target = join('..', CONFIG_SUBDIRS.ACCOUNTS, account._id + ".json");
-    const symlink_target_double = join('..', '..', CONFIG_SUBDIRS.ACCOUNTS, account._id + ".json");
+    const symlink_target = join('..', CONFIG_SUBDIRS.ACCOUNTS_BY_ID, account._id + ".json");
+    const symlink_target_double = join('..', '..', CONFIG_SUBDIRS.ACCOUNTS_BY_ID, account._id + ".json");
 
     if (account.access_keys) {
         for (const access_key_obj of account.access_keys) {
@@ -121,7 +121,7 @@ function run({conf_path}) {
     //check all dirs exist
     assert_dir_exists(conf_path);
 
-    const account_dir = join(conf_path, CONFIG_SUBDIRS.ACCOUNTS);
+    const account_dir = join(conf_path, CONFIG_SUBDIRS.ACCOUNTS_BY_ID);
     const bucket_dir = join(conf_path, CONFIG_SUBDIRS.BUCKETS);
     assert_dir_exists(account_dir);
     assert_dir_exists(bucket_dir);

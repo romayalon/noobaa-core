@@ -9,6 +9,7 @@ const config = require('../../config');
 const P = require('../util/promise');
 const nb_native = require('../util/nb_native');
 const cloud_utils = require('../util/cloud_utils');
+const { CONFIG_SUBDIRS } = require('../sdk/config_dir');
 const native_fs_utils = require('../util/native_fs_utils');
 const mongo_utils = require('../util/mongo_utils');
 const SensitiveString = require('../util/sensitive_string');
@@ -19,9 +20,7 @@ const manage_nsfs_logging = require('../manage_nsfs/manage_nsfs_logging');
 const noobaa_cli_diagnose = require('../manage_nsfs/diagnose');
 const nsfs_schema_utils = require('../manage_nsfs/nsfs_schema_utils');
 const { print_usage } = require('../manage_nsfs/manage_nsfs_help_utils');
-const { TYPES, ACTIONS, CONFIG_SUBDIRS,
-    LIST_ACCOUNT_FILTERS, LIST_BUCKET_FILTERS,
-    GLACIER_ACTIONS } = require('../manage_nsfs/manage_nsfs_constants');
+const { TYPES, ACTIONS, LIST_ACCOUNT_FILTERS, LIST_BUCKET_FILTERS, GLACIER_ACTIONS } = require('../manage_nsfs/manage_nsfs_constants');
 const { throw_cli_error, write_stdout_response, get_config_file_path, get_symlink_config_file_path,
     get_config_data, get_boolean_or_string_value, has_access_keys, set_debug_level, get_config_data_if_exists,
     check_and_create_config_dirs, get_bucket_owner_account} = require('../manage_nsfs/manage_nsfs_cli_utils');
@@ -31,9 +30,9 @@ const nc_mkm = require('../manage_nsfs/nc_master_key_manager').get_instance();
 const global_config = Object.seal({
     buckets_dir_name: '/' + CONFIG_SUBDIRS.BUCKETS,
     access_keys_dir_name: '/' + CONFIG_SUBDIRS.ACCESS_KEYS,
-    accounts_dir_name: '/' + CONFIG_SUBDIRS.ACCOUNTS,
-    accounts_dir_relative_path: '../' + CONFIG_SUBDIRS.ACCOUNTS + '/',
-    accounts_dir_relative_path_double: '../../' + CONFIG_SUBDIRS.ACCOUNTS + '/',
+    accounts_dir_name: '/' + CONFIG_SUBDIRS.ACCOUNTS_BY_ID,
+    accounts_dir_relative_path: '../' + CONFIG_SUBDIRS.ACCOUNTS_BY_ID + '/',
+    accounts_dir_relative_path_double: '../../' + CONFIG_SUBDIRS.ACCOUNTS_BY_ID + '/',
     root_accounts_dir_name: '/' + CONFIG_SUBDIRS.ROOT_ACCOUNTS,
     // will be defined during runtime (type is string)
     config_root: '',

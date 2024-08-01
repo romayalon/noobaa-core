@@ -18,7 +18,7 @@ const SensitiveString = require('../../util/sensitive_string');
 const NamespaceFS = require('../../sdk/namespace_fs');
 const BucketSpaceFS = require('../../sdk/bucketspace_fs');
 const { TMP_PATH } = require('../system_tests/test_utils');
-const { CONFIG_SUBDIRS } = require('../../manage_nsfs/manage_nsfs_constants');
+const { CONFIG_SUBDIRS } = require('../../sdk/config_dir');
 const nc_mkm = require('../../manage_nsfs/nc_master_key_manager').get_instance();
 
 
@@ -266,14 +266,14 @@ mocha.describe('bucketspace_fs', function() {
     };
 
     mocha.before(async () => {
-        await P.all(_.map([CONFIG_SUBDIRS.ACCOUNTS, CONFIG_SUBDIRS.ACCESS_KEYS, CONFIG_SUBDIRS.BUCKETS, CONFIG_SUBDIRS.ROOT_ACCOUNTS],
+        await P.all(_.map([CONFIG_SUBDIRS.ACCOUNTS_BY_ID, CONFIG_SUBDIRS.ACCESS_KEYS, CONFIG_SUBDIRS.BUCKETS, CONFIG_SUBDIRS.ROOT_ACCOUNTS],
             async dir =>
             await fs_utils.create_fresh_path(`${config_root}/${dir}`))
         );
         await fs_utils.create_fresh_path(new_buckets_path);
         for (let account of [account_user1, account_user2, account_user3, account_iam_user1, account_iam_user2]) {
             account = await nc_mkm.encrypt_access_keys(account);
-            const account_path = get_config_file_path(CONFIG_SUBDIRS.ACCOUNTS, account._id);
+            const account_path = get_config_file_path(CONFIG_SUBDIRS.ACCOUNTS_BY_ID, account._id);
             const account_access_path = get_symlink_path(CONFIG_SUBDIRS.ACCESS_KEYS, account.access_keys[0].access_key);
             const root_account_dir = path.join(CONFIG_SUBDIRS.ROOT_ACCOUNTS, account.name);
             await fs_utils.create_fresh_path(path.join(config_root, root_account_dir));

@@ -13,7 +13,8 @@ const config = require('../../../config');
 const NSFSHealth = require('../../manage_nsfs/health').NSFSHealth;
 const fs_utils = require('../../util/fs_utils');
 const nb_native = require('../../util/nb_native');
-const { CONFIG_SUBDIRS, TYPES, DIAGNOSE_ACTIONS } = require('../../manage_nsfs/manage_nsfs_constants');
+const { CONFIG_SUBDIRS } = require('../../sdk/config_dir');
+const { TYPES, DIAGNOSE_ACTIONS } = require('../../manage_nsfs/manage_nsfs_constants');
 const { get_process_fs_context, get_umasked_mode } = require('../../util/native_fs_utils');
 const { TMP_PATH, create_fs_user_by_platform, delete_fs_user_by_platform, exec_manage_cli } = require('../system_tests/test_utils');
 const { ManageCLIError } = require('../../manage_nsfs/manage_nsfs_cli_errors');
@@ -31,7 +32,7 @@ mocha.describe('nsfs nc health', function() {
     let Health;
 
     mocha.before(async () => {
-        await P.all(_.map([CONFIG_SUBDIRS.ACCOUNTS, CONFIG_SUBDIRS.BUCKETS], async dir =>
+        await P.all(_.map([CONFIG_SUBDIRS.ACCOUNTS_BY_ID, CONFIG_SUBDIRS.BUCKETS], async dir =>
             fs_utils.create_fresh_path(path.join(config_root, dir))));
         await fs_utils.create_fresh_path(root_path);
         await fs_utils.create_fresh_path(config_root_invalid);
@@ -123,7 +124,7 @@ mocha.describe('nsfs nc health', function() {
             await fs_utils.file_must_exist(new_buckets_path);
             await fs_utils.create_fresh_path(new_buckets_path + '/bucket1');
             await fs_utils.file_must_exist(new_buckets_path + '/bucket1');
-            await write_config_file(config_root, CONFIG_SUBDIRS.ACCOUNTS, acount_name, account1);
+            await write_config_file(config_root, CONFIG_SUBDIRS.ACCOUNTS_BY_ID, acount_name, account1);
             await write_config_file(config_root, CONFIG_SUBDIRS.BUCKETS, bucket_name, bucket1);
             const get_service_memory_usage = sinon.stub(Health, "get_service_memory_usage");
             get_service_memory_usage.onFirstCall().returns(Promise.resolve(100));
@@ -136,7 +137,7 @@ mocha.describe('nsfs nc health', function() {
             fs_utils.folder_delete(new_buckets_path);
             fs_utils.folder_delete(path.join(new_buckets_path, 'bucket1'));
             fs_utils.file_delete(path.join(config_root, CONFIG_SUBDIRS.BUCKETS, bucket1.name + '.json'));
-            fs_utils.file_delete(path.join(config_root, CONFIG_SUBDIRS.ACCOUNTS, account1.name + '.json'));
+            fs_utils.file_delete(path.join(config_root, CONFIG_SUBDIRS.ACCOUNTS_BY_ID, account1.name + '.json'));
             for (const user of Object.values(fs_users)) {
                 await delete_fs_user_by_platform(user.distinguished_name);
             }
@@ -189,7 +190,7 @@ mocha.describe('nsfs nc health', function() {
             Health.get_service_state.restore();
             Health.get_endpoint_response.restore();
             const account_invalid = { name: 'account_invalid', nsfs_account_config: { new_buckets_path: new_buckets_path + '/invalid' } };
-            await write_config_file(config_root, CONFIG_SUBDIRS.ACCOUNTS, account_invalid.name, account_invalid);
+            await write_config_file(config_root, CONFIG_SUBDIRS.ACCOUNTS_BY_ID, account_invalid.name, account_invalid);
             const get_service_state = sinon.stub(Health, "get_service_state");
             get_service_state.onFirstCall().returns(Promise.resolve({ service_status: 'active', pid: 1000 }))
                 .onSecondCall().returns(Promise.resolve({ service_status: 'active', pid: 2000 }));
@@ -199,7 +200,7 @@ mocha.describe('nsfs nc health', function() {
             assert.strictEqual(health_status.status, 'OK');
             assert.strictEqual(health_status.checks.accounts_status.invalid_accounts.length, 1);
             assert.strictEqual(health_status.checks.accounts_status.invalid_accounts[0].name, 'account_invalid');
-            await fs_utils.file_delete(path.join(config_root, CONFIG_SUBDIRS.ACCOUNTS, account_invalid.name + '.json'));
+            await fs_utils.file_delete(path.join(config_root, CONFIG_SUBDIRS.ACCOUNTS_BY_ID, account_invalid.name + '.json'));
         });
 
         mocha.it('NSFS bucket with invalid storage path', async function() {
@@ -240,7 +241,7 @@ mocha.describe('nsfs nc health', function() {
             Health.get_service_state.restore();
             Health.get_endpoint_response.restore();
             const account_invalid_schema = { name: 'account_invalid_schema', path: new_buckets_path };
-            await write_config_file(config_root, CONFIG_SUBDIRS.ACCOUNTS, account_invalid_schema.name, account_invalid_schema, "invalid");
+            await write_config_file(config_root, CONFIG_SUBDIRS.ACCOUNTS_BY_ID, account_invalid_schema.name, account_invalid_schema, "invalid");
             const get_service_state = sinon.stub(Health, "get_service_state");
             get_service_state.onFirstCall().returns(Promise.resolve({ service_status: 'active', pid: 1000 }))
                 .onSecondCall().returns(Promise.resolve({ service_status: 'active', pid: 2000 }));
@@ -250,7 +251,7 @@ mocha.describe('nsfs nc health', function() {
             assert.strictEqual(health_status.status, 'OK');
             assert.strictEqual(health_status.checks.accounts_status.invalid_accounts.length, 1);
             assert.strictEqual(health_status.checks.accounts_status.invalid_accounts[0].name, 'account_invalid_schema.json');
-            await fs_utils.file_delete(path.join(config_root, CONFIG_SUBDIRS.ACCOUNTS, account_invalid_schema.name + '.json'));
+            await fs_utils.file_delete(path.join(config_root, CONFIG_SUBDIRS.ACCOUNTS_BY_ID, account_invalid_schema.name + '.json'));
         });
 
         mocha.it('Health all condition is success, all_account_details is false', async function() {
@@ -311,7 +312,7 @@ mocha.describe('nsfs nc health', function() {
         });
 
         mocha.it('Account with inaccessible path - uid gid', async function() {
-            await write_config_file(config_root, CONFIG_SUBDIRS.ACCOUNTS, account_inaccessible.name, account_inaccessible);
+            await write_config_file(config_root, CONFIG_SUBDIRS.ACCOUNTS_BY_ID, account_inaccessible.name, account_inaccessible);
             Health.get_service_state.restore();
             Health.get_endpoint_response.restore();
             Health.all_account_details = true;
@@ -327,11 +328,11 @@ mocha.describe('nsfs nc health', function() {
             assert.strictEqual(health_status.checks.accounts_status.invalid_accounts.length, 1);
             assert.strictEqual(health_status.checks.accounts_status.invalid_accounts[0].code, "ACCESS_DENIED");
             assert.strictEqual(health_status.checks.accounts_status.invalid_accounts[0].name, account_inaccessible.name);
-            await fs_utils.file_delete(path.join(config_root, CONFIG_SUBDIRS.ACCOUNTS, account_inaccessible.name + '.json'));
+            await fs_utils.file_delete(path.join(config_root, CONFIG_SUBDIRS.ACCOUNTS_BY_ID, account_inaccessible.name + '.json'));
         });
 
         mocha.it('Account with inaccessible path - dn', async function() {
-            await write_config_file(config_root, CONFIG_SUBDIRS.ACCOUNTS, account_inaccessible_dn.name, account_inaccessible_dn);
+            await write_config_file(config_root, CONFIG_SUBDIRS.ACCOUNTS_BY_ID, account_inaccessible_dn.name, account_inaccessible_dn);
             Health.get_service_state.restore();
             Health.get_endpoint_response.restore();
             Health.all_account_details = true;
@@ -347,11 +348,11 @@ mocha.describe('nsfs nc health', function() {
             assert.strictEqual(health_status.checks.accounts_status.invalid_accounts.length, 1);
             assert.strictEqual(health_status.checks.accounts_status.invalid_accounts[0].code, "ACCESS_DENIED");
             assert.strictEqual(health_status.checks.accounts_status.invalid_accounts[0].name, account_inaccessible_dn.name);
-            await fs_utils.file_delete(path.join(config_root, CONFIG_SUBDIRS.ACCOUNTS, account_inaccessible_dn.name + '.json'));
+            await fs_utils.file_delete(path.join(config_root, CONFIG_SUBDIRS.ACCOUNTS_BY_ID, account_inaccessible_dn.name + '.json'));
         });
 
         mocha.it('Account with invalid dn', async function() {
-            await write_config_file(config_root, CONFIG_SUBDIRS.ACCOUNTS, invalid_account_dn.name, invalid_account_dn);
+            await write_config_file(config_root, CONFIG_SUBDIRS.ACCOUNTS_BY_ID, invalid_account_dn.name, invalid_account_dn);
             Health.get_service_state.restore();
             Health.get_endpoint_response.restore();
             Health.all_account_details = true;
@@ -373,7 +374,7 @@ mocha.describe('nsfs nc health', function() {
 
         mocha.it('Account with new_buckets_path missing and allow_bucket_creation false, valid account', async function() {
             const account_valid = { name: 'account_valid', nsfs_account_config: { uid: 999, gid: 999 }, allow_bucket_creation: false };
-            await write_config_file(config_root, CONFIG_SUBDIRS.ACCOUNTS, account_valid.name, account_valid);
+            await write_config_file(config_root, CONFIG_SUBDIRS.ACCOUNTS_BY_ID, account_valid.name, account_valid);
             Health.get_service_state.restore();
             Health.get_endpoint_response.restore();
             Health.all_account_details = true;
@@ -390,7 +391,7 @@ mocha.describe('nsfs nc health', function() {
 
         mocha.it('Account with new_buckets_path missing and allow_bucket_creation true, invalid account', async function() {
             const account_invalid = { name: 'account_invalid', nsfs_account_config: { uid: 999, gid: 999 }, allow_bucket_creation: true };
-            await write_config_file(config_root, CONFIG_SUBDIRS.ACCOUNTS, account_invalid.name, account_invalid);
+            await write_config_file(config_root, CONFIG_SUBDIRS.ACCOUNTS_BY_ID, account_invalid.name, account_invalid);
             Health.get_service_state.restore();
             Health.get_endpoint_response.restore();
             Health.all_account_details = true;
@@ -403,7 +404,7 @@ mocha.describe('nsfs nc health', function() {
             const health_status = await Health.nc_nsfs_health();
             assert.strictEqual(health_status.checks.accounts_status.valid_accounts.length, 2);
             assert.strictEqual(health_status.checks.accounts_status.invalid_accounts.length, 2);
-            await fs_utils.file_delete(path.join(config_root, CONFIG_SUBDIRS.ACCOUNTS, account_invalid.name + '.json'));
+            await fs_utils.file_delete(path.join(config_root, CONFIG_SUBDIRS.ACCOUNTS_BY_ID, account_invalid.name + '.json'));
         });
     });
 });
