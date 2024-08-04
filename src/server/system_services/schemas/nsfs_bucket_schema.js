@@ -29,6 +29,11 @@ module.exports = {
         name: {
             type: 'string',
         },
+        // deprecated on 5.18 - keeping it for backward compatibility
+        bucket_owner: {
+            deprecated: true,
+            type: 'string',
+        },
         system_owner: {
             type: 'string',
         },
