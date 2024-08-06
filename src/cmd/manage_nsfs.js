@@ -405,7 +405,7 @@ async function add_account(data) {
     // for validating against the schema we need an object, hence we parse it back to object
     const account = encrypted_data ? JSON.parse(encrypted_data) : data;
     nsfs_schema_utils.validate_account_schema(account);
-    await config_fs.create_account_config_file(data.name, account, true);
+    await config_fs.create_account_config_file(account, true);
     write_stdout_response(ManageCLIResponse.AccountCreated, data, { account: event_arg });
 }
 
@@ -434,7 +434,7 @@ async function update_account(data, is_flag_iam_operate_on_root_account) {
         // for validating against the schema we need an object, hence we parse it back to object
         const account = encrypted_data ? JSON.parse(encrypted_data) : data;
         nsfs_schema_utils.validate_account_schema(account);
-        await config_fs.update_account_config_file(data.name, account, undefined, undefined);
+        await config_fs.update_account_config_file(account, undefined, undefined, undefined);
         write_stdout_response(ManageCLIResponse.AccountUpdated, data);
         return;
     }
@@ -466,17 +466,16 @@ async function update_account(data, is_flag_iam_operate_on_root_account) {
     const parsed_data = JSON.parse(encrypted_data);
     nsfs_schema_utils.validate_account_schema(parsed_data);
     if (update_name) {
-        await config_fs.create_account_config_file(new_name, parsed_data, true, [cur_access_key]);
-        await config_fs.delete_account_config_file(cur_name, data.access_keys);
+        await config_fs.update_account_config_file(parsed_data, cur_name, undefined, undefined);
     } else if (update_access_key) {
-        await config_fs.update_account_config_file(cur_name, parsed_data, parsed_data.access_keys, [cur_access_key]);
+        await config_fs.update_account_config_file(parsed_data, undefined, parsed_data.access_keys, [cur_access_key]);
     }
     write_stdout_response(ManageCLIResponse.AccountUpdated, data);
 }
 
 async function delete_account(data) {
     await manage_nsfs_validations.validate_account_args(config_fs, data, ACTIONS.DELETE, undefined);
-    await config_fs.delete_account_config_file(data.name, data.access_keys);
+    await config_fs.delete_account_config_file(data.id, data.name, data.access_keys);
     write_stdout_response(ManageCLIResponse.AccountDeleted, '', { account: data.name });
 }
 

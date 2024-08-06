@@ -9,12 +9,26 @@ const nb_native = require('../util/nb_native');
 const native_fs_utils = require('../util/native_fs_utils');
 const nc_mkm = require('../manage_nsfs/nc_master_key_manager').get_instance();
 
+/* Config directory sub directory comments - 
+   On 5.18 - 
+   1. accounts/ will be deprecated
+   2. A new identities/ directory will be created that represents an account identity
+      config_dir/identities/111/account.json -> represents the account properties (bob)
+      config_dir/identities/111/users/ -> represents the account's iam users
+      config_dir/identities/111/users/alice.symlink -> config_dir/identities/222/account.json (an index to another identity)
+      in the future the identity directory will contain more features like policies, roles etc.
+   3. A new root_accounts/ directory will be created that represents an index which is a 
+      a symlink from root account name to its actual identity.
+      For example - 
+      config_dir/root_accounts/bob.symlink -> config_dir/identities/111/account.json
+*/
 const CONFIG_SUBDIRS = Object.freeze({
-    ACCOUNTS: 'accounts',
+    ACCOUNTS: 'accounts', // deprecated on 5.18
     BUCKETS: 'buckets',
-    ACCESS_KEYS: 'access_keys'
+    ACCESS_KEYS: 'access_keys',
+    IDENTITIES: 'identities',
+    ROOT_ACCOUNTS: 'root_accounts'
 });
-
 const JSON_SUFFIX = '.json';
 const SYMLINK_SUFFIX = '.symlink';
 
@@ -34,7 +48,9 @@ class ConfigFS {
     constructor(config_root, config_root_backend, fs_context) {
         this.config_root = config_root;
         this.config_root_backend = config_root_backend || config.NSFS_NC_CONFIG_DIR_BACKEND;
-        this.accounts_dir_path = path.join(config_root, CONFIG_SUBDIRS.ACCOUNTS);
+        this.old_accounts_dir_path = path.join(config_root, CONFIG_SUBDIRS.ACCOUNTS);
+        this.root_accounts_dir_path = path.join(config_root, CONFIG_SUBDIRS.ROOT_ACCOUNTS);
+        this.identities_dir_path = path.join(config_root, CONFIG_SUBDIRS.IDENTITIES);
         this.access_keys_dir_path = path.join(config_root, CONFIG_SUBDIRS.ACCESS_KEYS);
         this.buckets_dir_path = path.join(config_root, CONFIG_SUBDIRS.BUCKETS);
         this.config_json_path = path.join(config_root, 'config.json');
@@ -88,7 +104,8 @@ class ConfigFS {
         const pre_req_dirs = [
             this.config_root,
             this.buckets_dir_path,
-            this.accounts_dir_path,
+            this.root_accounts_dir_path,
+            this.identities_dir_path,
             this.access_keys_dir_path,
         ];
 
@@ -147,6 +164,7 @@ class ConfigFS {
     ///////////////////////////////////////
     ////// ACCOUNT CONFIG DIR FUNCS  //////
     ///////////////////////////////////////
+    //ROMY - add fallback functions
 
     /**
      * get_account_path_by_name returns the full account path by name
@@ -163,34 +181,61 @@ class ConfigFS {
 
     /**
      * get_root_account_path_by_name returns the full account path by name
+     * root account can be found by name under root_accounts/account_name.symlink
      * @param {string} account_name
      * @returns {string} 
      */
     get_root_account_path_by_name(account_name) {
-        // TODO -  change to this.symlink(account_name) on identities/ PR;
-        return path.join(this.accounts_dir_path, this.json(account_name));
+        return path.join(this.root_accounts_dir_path, this.symlink(account_name));
     }
 
     /**
      * get_iam_account_path_by_name returns the full account path by name
+     * iam account can be found by name under identities/owner_root_account_id/users/iam_account_name.symlink
      * @param {string} account_name
      * @param {string} owner_root_account_id
      * @returns {string} 
     */
     get_iam_account_path_by_name(account_name, owner_root_account_id) {
-       // TODO -  change to this.symlink(account_name) on identities/ PR;
-       // update IAM user location identities/root_id_number/iam_account_name.symlink
-       return path.join(this.accounts_dir_path, this.json(account_name));
+       return path.join(this.identities_dir_path, owner_root_account_id, 'users', this.symlink(account_name));
     }
 
     /**
-     * get_account_relative_path_by_name returns the full account path by name
+     * get_old_account_relative_path_by_name returns the old (5.17) full account path by name
      * @param {string} account_name
      * @returns {string} 
     */
-    get_account_relative_path_by_name(account_name) {
-       // TODO -  change to this.symlink(account_name) on identities/ PR;
-       return path.join('../', CONFIG_SUBDIRS.ACCOUNTS, this.json(account_name));
+    get_old_account_relative_path_by_name(account_name) {
+        // TODO -  change to this.symlink(account_name) on identities/ PR;
+        return path.join('../', CONFIG_SUBDIRS.ACCOUNTS, this.json(account_name));
+    }
+
+    /**
+     * get_account_relative_path_by_id returns the full account path by id
+     * the target of symlinks will be the 
+     * @param {string} account_id
+     * @returns {string} 
+    */
+    get_account_relative_path_by_id(account_id) {
+       return path.join('../', CONFIG_SUBDIRS.IDENTITIES, account_id, this.json('account'));
+    }
+
+    /**
+     * get_account_path_by_id returns the full account path by id
+     * @param {string} account_id
+     * @returns {string} 
+    */
+    get_account_path_by_id(account_id) {
+        return path.join(this.config_root, CONFIG_SUBDIRS.IDENTITIES, account_id, this.json('account'));
+    }
+
+    /**
+     * get_account_dir_path_by_id returns the account identity dir path by id
+     * @param {string} account_id
+     * @returns {string} 
+    */
+    get_account_dir_path_by_id(account_id) {
+        return path.join(this.config_root, CONFIG_SUBDIRS.IDENTITIES, account_id, '/');
     }
 
     /**
@@ -208,30 +253,31 @@ class ConfigFS {
      * @returns {string} 
     */
     get_old_account_path_by_name(account_name) {
-        return path.join(this.accounts_dir_path, this.json(account_name));
+        return path.join(this.old_accounts_dir_path, this.json(account_name));
     }
 
     /**
      * is_account_exists returns true if account config path exists in config dir
      * it can be determined by any account identifier - name, access_key and in the future id
-     * @param {{ name?: string, access_key?: string }} identifier_object
+     * @param {{ id?: string, name?: string, access_key?: string }} identifier_object
+     * @param {string} identifier_object
      * @returns {Promise<boolean>} 
     */
-    async is_account_exists(identifier_object) {
+    // ROMY - here we need fallbacks or another fallback function
+    async is_account_exists(identifier_object, owner_root_account_id) {
         if (!identifier_object || typeof identifier_object !== 'object') throw new Error('config_fs.is_account_exists - no identifier provided');
        let path_to_check;
        let use_lstat = false;
        if (identifier_object.name) {
-           // TODO - when users/ move to be symlink we need to use_lstat by name, id is not using lstat
-           path_to_check = this.get_account_path_by_name(identifier_object.name);
+           path_to_check = this.get_account_path_by_name(identifier_object.name, owner_root_account_id);
         } else if (identifier_object.access_key) {
             path_to_check = this.get_account_path_by_access_key(identifier_object.access_key);
             use_lstat = true;
-       } else {
+        } else if (identifier_object.id) {
+            path_to_check = this.get_account_path_by_id(identifier_object.id);
+        } else {
             throw new Error(`config_fs.is_account_exists - invalid identifier provided ${identifier_object}`);
         }
-        // TODO - add is_account_exists by id when idenetities/ added
-        // else if (identifier_object.id) {}
         return native_fs_utils.is_path_exists(this.fs_context, path_to_check, use_lstat);
     }
 
@@ -274,84 +320,132 @@ class ConfigFS {
      * @returns {Promise<Dirent[]>} 
      */
     async list_root_accounts(options) {
-        return nb_native().fs.readdir(this.fs_context, this.accounts_dir_path);
+        return nb_native().fs.readdir(this.fs_context, this.old_accounts_dir_path);
     }
 
     /**
      * create_account_config_file creates account config file
-     * if account_data.access_keys is an array that contains at least 1 item -
-     * link all item in account_data.access_keys to the relative path of the newly created config file
-     * @param {string} account_name
+     * 1. create /identities/account_id/ directory
+     * 2. create /identities/account_id/account.json file
+     * 3. symlink /root_accounts/account_name -> /identities/account_id/account.json
+     * 4. delete old access keys - ROMY maybe should be removed
+     * 5. symlink new access keys if  account_data.access_keys is an array that contains at least 1 item -
+     *    link all item in account_data.access_keys to the relative path of the newly created config file
      * @param {*} account_data
-     * @param {boolean} symlink_new_access_keys
-     * @param {String[]} old_access_keys
+     * @param {boolean} [symlink_new_access_keys]
+     * @param {String[]} [access_keys_to_delete]
      * @returns {Promise<void>} 
      */
-    async create_account_config_file(account_name, account_data, symlink_new_access_keys, old_access_keys = []) {
-        const account_path = this.get_account_path_by_name(account_name);
-        await native_fs_utils.create_config_file(this.fs_context, this.accounts_dir_path, account_path, JSON.stringify(account_data));
+    async create_account_config_file(account_data, symlink_new_access_keys, access_keys_to_delete = []) {
+        const { name, _id, owner = undefined } = account_data;
+        const account_path = this.get_account_path_by_id(_id);
+        const account_dir_path = this.get_account_dir_path_by_id(_id);
 
-        if (old_access_keys.length > 0) {
-            for (const access_key of old_access_keys) {
-                const access_key_config_path = this.get_account_path_by_access_key(access_key);
-                await nb_native().fs.unlink(this.fs_context, access_key_config_path);
-            }
-        }
-        if (symlink_new_access_keys && account_data.access_keys?.length > 0) {
-            for (const access_key_obj of account_data.access_keys) {
-                const account_config_access_key_path = this.get_account_path_by_access_key(access_key_obj.access_key);
-                const account_config_relative_path = this.get_account_relative_path_by_name(account_name);
-                await native_fs_utils._create_path(this.access_keys_dir_path, this.fs_context, config.BASE_MODE_CONFIG_DIR);
-                await nb_native().fs.symlink(this.fs_context, account_config_relative_path, account_config_access_key_path);
-            }
-        }
+        await native_fs_utils._create_path(account_dir_path, this.fs_context, config.BASE_MODE_CONFIG_DIR);
+        await native_fs_utils.create_config_file(this.fs_context, account_dir_path, account_path, JSON.stringify(account_data));
+        await this.link_account_name_index(_id, name, owner);
+
+        await this.unlink_access_keys_index(access_keys_to_delete);
+        if (symlink_new_access_keys) await this.link_access_keys_index(_id, account_data.access_keys?.length);
     }
 
     /**
      * update_account_config_file updates account config file
      * if old_access_keys is an array that contains at least 1 item -
      * unlink old access_keys and link new access_keys
-     * @param {string} account_name
+     * 1. update /identities/account_id/account.json
+     * 2. if name updated -
+     *    link /root_acconts/new_account_name -> /identities/account_id/account.json
+     *    unlink /root_acconts/old_account_name
+     * 3. if access key was updated -
+     *    for all new_access_keys - link /access_keys/new_access_key -> /identities/account_id/account.json
+     *    for all old_access_keys - unlink /access_keys/old_access_key
      * @param {Object} account_new_data
-     * @param {Object[]} [new_access_keys_to_link]
-     * @param {String[]} [old_access_keys_to_remove]
+     * @param {String} [old_name]
+     * @param {Object} [new_access_keys_to_link]
+     * @param {String[]} [access_keys_to_delete]
      * @returns {Promise<void>}
      */
-    async update_account_config_file(account_name, account_new_data, new_access_keys_to_link = [], old_access_keys_to_remove = []) {
-        const account_config_path = this.get_account_path_by_name(account_name);
-        await native_fs_utils.update_config_file(this.fs_context, this.accounts_dir_path,
+    async update_account_config_file(account_new_data, old_name, new_access_keys_to_link = [], access_keys_to_delete = []) {
+        const { name, _id, owner = undefined } = account_new_data;
+        const account_config_path = this.get_account_path_by_id(_id);
+        const account_dir_path = this.get_account_dir_path_by_id(_id);
+        await native_fs_utils.update_config_file(this.fs_context, account_dir_path,
             account_config_path, JSON.stringify(account_new_data));
 
-        if (new_access_keys_to_link.length > 0) {
-            for (const access_keys of new_access_keys_to_link) {
-                const new_access_key_path = this.get_account_path_by_access_key(access_keys.access_key);
-                const account_config_relative_path = this.get_account_relative_path_by_name(account_name);
-                await nb_native().fs.symlink(this.fs_context, account_config_relative_path, new_access_key_path);
-            }
+        if (old_name) {
+            await this.link_account_name_index(_id, name, owner);
+            await this.unlink_account_name_index(old_name);
         }
-
-        if (old_access_keys_to_remove.length > 0) {
-            for (const access_key of old_access_keys_to_remove) {
-                const cur_access_key_path = this.get_account_path_by_access_key(access_key);
-                await nb_native().fs.unlink(this.fs_context, cur_access_key_path);
-            }
-        }
+        await this.link_access_keys_index(_id, new_access_keys_to_link);
+        await this.unlink_access_keys_index(access_keys_to_delete);
     }
 
     /**
      * delete_account_config_file deletes account config file
-     * if access_keys_to_delete is an array that contains at least 1 item -
-     * unlink all items in access_keys_to_delete
+     * 1. delete /identities/account_id/account.json
+     * 2. delete /identities/account_id/
+     * 3. unlink /root_accounts/account_name
+     * 4. unlink /access_keys/access_key if access_keys_to_delete is an array that contains at least 1 item -
+     * unlink all item in access_keys_to_delete
+     * @param {string} account_id
      * @param {string} account_name
      * @param {Object[]} [access_keys_to_delete]
      * @returns {Promise<void>} 
      */
-    async delete_account_config_file(account_name, access_keys_to_delete = []) {
-        const account_config_path = this.get_account_path_by_name(account_name);
-        await native_fs_utils.delete_config_file(this.fs_context, this.accounts_dir_path, account_config_path);
+    async delete_account_config_file(account_id, account_name, access_keys_to_delete = []) {
+        const account_id_config_path = this.get_account_path_by_id(account_id);
+        const account_dir_path = this.get_account_dir_path_by_id(account_id);
+        const account_name_config_path = this.get_account_path_by_name(account_name);
+
+        await native_fs_utils.delete_config_file(this.fs_context, account_dir_path, account_id_config_path);
+        await native_fs_utils.folder_delete(account_dir_path, this.fs_context);
+        await nb_native().fs.unlink(this.fs_context, account_name_config_path);
+        await this.unlink_access_keys_index(access_keys_to_delete);
+    }
+
+    /**
+     * unlink_access_key_index unlinks the access key from the config directory
+     * @param {string} access_key
+     * @returns {Promise<void>} 
+     */
+    async unlink_access_key_index(access_key) {
+        const acces_key_path = this.get_account_path_by_access_key(access_key);
+        await nb_native().fs.unlink(this.fs_context, acces_key_path);
+    }
+
+    /**
+     * link_account_name_index links the access key to the relative path of the account id config file
+     * @param {string} account_id
+     * @param {string} account_name
+     * @param {string} owner_id
+     * @returns {Promise<void>} 
+     */
+    async link_account_name_index(account_id, account_name, owner_id) {
+        const account_name_path = this.get_account_path_by_name(account_name, owner_id);
+        const account_id_relative_path = this.get_account_relative_path_by_id(account_id);
+        await nb_native().fs.symlink(this.fs_context, account_id_relative_path, account_name_path);
+    }
+
+    /**
+     * unlink_account_name_index unlinks the access key from the config directory
+     * @param {string} account_name
+     * @returns {Promise<void>} 
+     */
+    async unlink_account_name_index(account_name) {
+        const account_name_path = this.get_account_path_by_name(account_name);
+        await nb_native().fs.unlink(this.fs_context, account_name_path);
+    }
+
+    /**
+     * unlink_access_keys_index unlinks the access keys from the config directory
+     * @param {Object[]} access_keys_to_delete
+     * @returns {Promise<void>} 
+     */
+    async unlink_access_keys_index(access_keys_to_delete) {
+        if (!access_keys_to_delete.length) return;
         for (const access_keys of access_keys_to_delete) {
-            const access_key_config_path = this.get_account_path_by_access_key(access_keys.access_key);
-            await nb_native().fs.unlink(this.fs_context, access_key_config_path);
+            await this.unlink_account_name_index(access_keys.access_key);
         }
     }
 
@@ -363,6 +457,20 @@ class ConfigFS {
     async unlink_access_key_symlink(access_key) {
         const acces_key_path = this.get_account_path_by_access_key(access_key);
         await nb_native().fs.unlink(this.fs_context, acces_key_path);
+    }
+
+    /**
+     * link_access_keys_index links the access keys symlinks
+     * @param {Object[]} access_keys_to_link
+     * @returns {Promise<void>} 
+     */
+    async link_access_keys_index(account_id, access_keys_to_link) {
+        if (!access_keys_to_link.length) return;
+        const account_config_relative_path = this.get_account_relative_path_by_id(account_id);
+        for (const access_keys of access_keys_to_link) {
+            const new_access_key_path = this.get_account_path_by_access_key(access_keys.access_key);
+            await nb_native().fs.symlink(this.fs_context, account_config_relative_path, new_access_key_path);
+        }
     }
 
     //////////////////////////////////////
