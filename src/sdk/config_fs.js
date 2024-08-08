@@ -226,7 +226,7 @@ class ConfigFS {
      * @returns {string} 
     */
     get_account_or_user_path_by_id(account_id) {
-        return path.join(this.config_root, CONFIG_SUBDIRS.IDENTITIES, account_id, this.json('account'));
+        return path.join(this.identities_dir_path, account_id, this.json('account'));
     }
 
     /**
@@ -335,7 +335,7 @@ class ConfigFS {
      * @returns {Promise<Dirent[]>} 
      */
     async list_accounts(options) {
-        return nb_native().fs.readdir(this.fs_context, this.old_accounts_dir_path);
+        return nb_native().fs.readdir(this.fs_context, this.accounts_by_name_dir_path);
     }
 
     /**
@@ -362,7 +362,7 @@ class ConfigFS {
 
         await this.link_account_name_index(_id, name, owner);
         await this.unlink_access_keys_index(access_keys_to_delete);
-        if (symlink_new_access_keys) await this.link_access_keys_index(_id, account_data.access_keys?.length);
+        if (symlink_new_access_keys) await this.link_access_keys_index(_id, account_data.access_keys);
     }
 
     /**
@@ -461,7 +461,7 @@ class ConfigFS {
     async unlink_access_keys_index(access_keys_to_delete) {
         if (!access_keys_to_delete.length) return;
         for (const access_keys of access_keys_to_delete) {
-            await this.unlink_account_name_index(access_keys.access_key);
+            await this.unlink_access_key_symlink(access_keys.access_key);
         }
     }
 

@@ -341,7 +341,7 @@ class NSFSHealth {
 
         const entries = type === TYPES.BUCKET ?
             await this.config_fs.list_buckets() :
-            await this.config_fs.list_root_accounts();
+            await this.config_fs.list_accounts();
 
         const config_files = entries.filter(entree => !native_fs_utils.isDirectory(entree) && entree.name.endsWith(JSON_SUFFIX));
         for (const config_file of config_files) {

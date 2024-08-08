@@ -194,7 +194,7 @@ class AccountSpaceFS {
             this._check_if_requested_account_is_root_account_or_IAM_user(action, requesting_account, account_to_delete);
             this._check_if_requested_is_owned_by_root_account(action, requesting_account, account_to_delete);
             await this._check_if_user_does_not_have_resources_before_deletion(action, account_to_delete);
-            await this.config_fs.delete_account_config_file(account_to_delete.id, params.username);
+            await this.config_fs.delete_account_config_file(account_to_delete._id, params.username);
         } catch (err) {
             dbg.error(`AccountSpaceFS.${action} error`, err);
             throw native_fs_utils.translate_error_codes(err, native_fs_utils.entity_enum.USER);
