@@ -511,7 +511,7 @@ async function manage_account_operations(action, data, show_secrets, user_input)
     } else if (action === ACTIONS.LIST) {
         const account_filters = _.pick(user_input, LIST_ACCOUNT_FILTERS);
         const wide = get_boolean_or_string_value(user_input.wide);
-        const accounts = await list_config_files(TYPES.ACCOUNT, config_fs.accounts_dir_path, wide,
+        const accounts = await list_config_files(TYPES.ACCOUNT, config_fs.accounts_by_name_dir_path, wide,
             show_secrets, account_filters);
         write_stdout_response(ManageCLIResponse.AccountList, accounts);
     } else {

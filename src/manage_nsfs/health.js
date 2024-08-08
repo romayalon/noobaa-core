@@ -327,7 +327,7 @@ class NSFSHealth {
             config_root_type_exists = await this.config_fs.validate_config_dir_exists(config_dir_path);
         } else if (type === TYPES.ACCOUNT) {
             // TODO - handle iam accounts when directory structure changes - read_account_by_id
-            config_dir_path = this.config_fs.accounts_dir_path;
+            config_dir_path = this.config_fs.accounts_by_name_dir_path;
             config_root_type_exists = await this.config_fs.validate_config_dir_exists(config_dir_path);
         }
         // TODO - this is not a good handling for that - we need to take it to an upper level

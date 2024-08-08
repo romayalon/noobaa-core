@@ -354,7 +354,7 @@ async function validate_bucket_args(config_fs, data, action) {
         if (data.s3_policy) {
             try {
                 await bucket_policy_utils.validate_s3_policy(data.s3_policy, data.name,
-                    async principal => config_fs.is_account_exists({ name: principal })
+                    async principal => config_fs.is_account_exists({ name: principal }, account.owner)
                 );
             } catch (err) {
                 dbg.error('validate_bucket_args invalid bucket policy err:', err);
@@ -504,10 +504,11 @@ async function validate_account_not_owns_buckets(config_fs, account_name) {
  */
 async function check_if_root_account_does_not_have_IAM_users(config_fs, account_to_check, action) {
     const fs_context = config_fs.fs_context;
-    const entries = await nb_native().fs.readdir(fs_context, config_fs.accounts_dir_path);
+    // TODO - For supporting IAM, we need to check if {config_dir}/identities/{account_id}/users/ has anything inside
+    const entries = await nb_native().fs.readdir(fs_context, config_fs.accounts_by_name_dir_path);
     await P.map_with_concurrency(10, entries, async entry => {
         if (entry.name.endsWith(JSON_SUFFIX)) {
-            const full_path = path.join(config_fs.accounts_dir_path, entry.name);
+            const full_path = path.join(config_fs.accounts_by_name_dir_path, entry.name);
             const account_data = await config_fs.get_config_data(full_path);
             if (entry.name.includes(config.NSFS_TEMP_CONF_DIR_NAME)) return undefined;
             const is_root_account_owns_user = check_root_account_owns_user(account_to_check, account_data);
