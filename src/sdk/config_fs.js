@@ -353,13 +353,14 @@ class ConfigFS {
      */
     async create_account_config_file(account_data, symlink_new_access_keys, access_keys_to_delete = []) {
         const { name, _id, owner = undefined } = account_data;
+        const data_string = JSON.stringify(account_data);
         const account_path = this.get_account_or_user_path_by_id(_id);
         const account_dir_path = this.get_account_or_user_dir_path_by_id(_id);
 
         await native_fs_utils._create_path(account_dir_path, this.fs_context, config.BASE_MODE_CONFIG_DIR);
-        await native_fs_utils.create_config_file(this.fs_context, account_dir_path, account_path, JSON.stringify(account_data));
-        await this.link_account_name_index(_id, name, owner);
+        await native_fs_utils.create_config_file(this.fs_context, account_dir_path, account_path, data_string);
 
+        await this.link_account_name_index(_id, name, owner);
         await this.unlink_access_keys_index(access_keys_to_delete);
         if (symlink_new_access_keys) await this.link_access_keys_index(_id, account_data.access_keys?.length);
     }
@@ -383,10 +384,10 @@ class ConfigFS {
      */
     async update_account_config_file(account_new_data, old_name, new_access_keys_to_link = [], access_keys_to_delete = []) {
         const { name, _id, owner = undefined } = account_new_data;
-        const account_config_path = this.get_account_or_user_path_by_id(_id);
+        const data_string = JSON.stringify(account_new_data);
+        const account_path = this.get_account_or_user_path_by_id(_id);
         const account_dir_path = this.get_account_or_user_dir_path_by_id(_id);
-        await native_fs_utils.update_config_file(this.fs_context, account_dir_path,
-            account_config_path, JSON.stringify(account_new_data));
+        await native_fs_utils.update_config_file(this.fs_context, account_dir_path, account_path, data_string);
 
         if (old_name) {
             await this.link_account_name_index(_id, name, owner);

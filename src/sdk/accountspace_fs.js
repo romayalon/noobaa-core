@@ -562,7 +562,7 @@ class AccountSpaceFS {
     // based on the function from manage_nsfs
     async _list_config_files_for_users(requesting_account, iam_path_prefix) {
         // TODO - currently handles only root accounts, need to add iam_accounts
-        const entries = await this.config_fs.list_root_accounts();
+        const entries = await this.config_fs.list_accounts();
         const should_filter_by_prefix = check_iam_path_was_set(iam_path_prefix);
 
         const config_files_list = await P.map_with_concurrency(10, entries, async entry => {
@@ -692,7 +692,7 @@ class AccountSpaceFS {
     // currently, partial copy from _list_config_files_for_users
     async _check_if_root_account_does_not_have_IAM_users_before_deletion(action, account_to_delete) {
         const resource_name = 'IAM users';
-        const entries = await this.config_fs.list_root_accounts();
+        const entries = await this.config_fs.list_accounts();
         await P.map_with_concurrency(10, entries, async entry => {
             if (entry.name.endsWith(JSON_SUFFIX)) {
                 const account_data = await this.config_fs.get_account_by_name(entry.name, { silent_if_missing: true });
