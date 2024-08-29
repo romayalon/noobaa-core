@@ -16,7 +16,7 @@ const mongo_utils = require('../util/mongo_utils');
 function throw_cli_error(error, detail, event_arg) {
     const error_event = NSFS_CLI_ERROR_EVENT_MAP[error.code];
     if (error_event) {
-        new NoobaaEvent(error_event).create_event(undefined, event_arg, undefined);
+        new NoobaaEvent(error_event).create_event(undefined, event_arg, JSON.stringify(error));
     }
     const err = new ManageCLIError({ ...error, detail });
     throw err;
