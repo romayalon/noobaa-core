@@ -124,4 +124,114 @@ describe('test versioning concurrency', () => {
         const list_res = await nsfs.list_objects({ bucket: bucket }, DUMMY_OBJECT_SDK);
         expect(list_res.objects.length).toBe(0);
     }, 8000);
+
+    it('concurrent puts & regular delete objects', async () => {
+        const bucket = 'bucket1';
+        const key = 'key3';
+        const put_res_etags = [];
+        const delete_res_etags = [];
+        const initial_num_of_versions = 3;
+        for (let i = 0; i < initial_num_of_versions; i++) {
+            const random_data = Buffer.from(String(crypto_random_string(7)));
+            const body = buffer_utils.buffer_to_read_stream(random_data);
+            await nsfs.upload_object({ bucket: bucket, key: key, source_stream: body }, DUMMY_OBJECT_SDK);
+        }
+        const num_of_concurrency = 2;
+        for (let i = 0; i < num_of_concurrency; i++) {
+            const random_data = Buffer.from(String(crypto_random_string(7)));
+            const body = buffer_utils.buffer_to_read_stream(random_data);
+            nsfs.upload_object({ bucket: bucket, key: key, source_stream: body }, DUMMY_OBJECT_SDK)
+                .then(res => {
+                    console.log('upload res', res);
+                    put_res_etags.push(res.etag);
+                }).catch(err => {
+                    console.log('put the same key error - ', err);
+                    throw err;
+                });
+            nsfs.delete_object({ bucket: bucket, key: key }, DUMMY_OBJECT_SDK)
+                .then(res => {
+                    console.log('delete res', res);
+                    delete_res_etags.push(res.created_version_id);
+                }).catch(err => {
+                    console.log('delete the same key error - ', err);
+                    throw err;
+                });
+
+        }
+        await P.delay(5000);
+        expect(put_res_etags).toHaveLength(num_of_concurrency);
+        expect(delete_res_etags).toHaveLength(num_of_concurrency);
+        const versions = await nsfs.list_object_versions({ bucket: bucket }, DUMMY_OBJECT_SDK);
+        expect(versions.objects.length).toBe(initial_num_of_versions + 2 * num_of_concurrency);
+        const num_of_delete_markers = (versions.objects.filter(version => version.delete_marker === true)).length;
+        expect(num_of_delete_markers).toBe(num_of_concurrency);
+        const num_of_latest_versions = (versions.objects.filter(version => version.is_latest === true)).length;
+        expect(num_of_latest_versions).toBe(1);
+    }, 6000);
+
+    it('concurrent delete multiple objects of the same nested key', async () => {
+        const bucket = 'bucket1';
+        const key = 'dir2/key2';
+        const concurrency_num = 10;
+        const upload_res_arr = [];
+        const delete_res_arr = [];
+        const delete_err_arr = [];
+
+        for (let i = 0; i < concurrency_num; i++) {
+            const random_data = Buffer.from(String(crypto_random_string(7)));
+            const body = buffer_utils.buffer_to_read_stream(random_data);
+            const res = await nsfs.upload_object({ bucket, key, source_stream: body }, DUMMY_OBJECT_SDK);
+            upload_res_arr.push({ key, version_id: res.version_id });
+        }
+        const versions = await nsfs.list_object_versions({ bucket: bucket }, DUMMY_OBJECT_SDK);
+        for (const { version_id } of upload_res_arr) {
+            const found = versions.objects.find(object => object.key === key && object.version_id === version_id);
+            expect(found).toBeDefined();
+        }
+
+        for (let i = 0; i < concurrency_num; i++) {
+            nsfs.delete_multiple_objects({ bucket, objects: upload_res_arr }, DUMMY_OBJECT_SDK)
+                .then(res => delete_res_arr.push(res))
+                .catch(err => delete_err_arr.push(err));
+        }
+
+        await P.delay(2000);
+        expect(delete_res_arr.length).toBe(concurrency_num);
+        for (const res of delete_res_arr) {
+            expect(res.length).toBe(concurrency_num);
+            for (const single_delete_res of res) {
+                expect(single_delete_res.err_message).toBe(undefined);
+            }
+        }
+        const list_res = await nsfs.list_objects({ bucket: bucket }, DUMMY_OBJECT_SDK);
+        expect(list_res.objects.length).toBe(0);
+    }, 8000);
+
+
+    it('concurrent puts & deletes of the same nested key', async () => {
+        const bucket = 'bucket1';
+        const key = 'dir3/key3';
+        const upload_res_arr = [];
+        const delete_res_arr = [];
+        const delete_err_arr = [];
+        const upload_err_arr = [];
+        for (let i = 0; i < 5; i++) {
+            const random_data = Buffer.from(String(crypto_random_string(7)));
+            const body = buffer_utils.buffer_to_read_stream(random_data);
+            nsfs.upload_object({ bucket: bucket, key: key, source_stream: body }, DUMMY_OBJECT_SDK)
+                .then(res => {
+                    upload_res_arr.push(res.etag);
+                    nsfs.delete_object({ bucket: bucket, key: key, version_id: res.version_id }, DUMMY_OBJECT_SDK)
+                        .then(delete_res => delete_res_arr.push(delete_res))
+                        .catch(err => delete_err_arr.push(err));
+                }).catch(err => {
+                    upload_err_arr.push(err);
+                });
+        }
+        await P.delay(3000);
+        expect(upload_res_arr).toHaveLength(5);
+        expect(upload_err_arr).toHaveLength(0);
+        expect(delete_res_arr).toHaveLength(5);
+        expect(delete_err_arr).toHaveLength(0);
+    }, 6000);
 });

@@ -1867,6 +1867,7 @@ class NamespaceFS {
             }
             return res || {};
         } catch (err) {
+            console.log('ROMY err', err);
             throw native_fs_utils.translate_error_codes(err, native_fs_utils.entity_enum.OBJECT);
         }
     }
@@ -2949,9 +2950,12 @@ class NamespaceFS {
                 }
                 break;
             } catch (err) {
-                retries -= 1;
-                if (retries <= 0 || !native_fs_utils.should_retry_link_unlink(is_gpfs, err)) throw err;
                 dbg.warn(`NamespaceFS._delete_latest_version: Retrying retries=${retries} latest_ver_path=${latest_ver_path}`, err);
+                retries -= 1;
+                if (retries <= 0 || !native_fs_utils.should_retry_link_unlink(is_gpfs, err)) {
+                    dbg.error('NamespaceFS._delete_latest_version, failed to delete latest version, err.code', err.code, 'err= ', err, 'retries: ', retries);
+                    throw err;
+                }
             } finally {
                 if (gpfs_options) await this._close_files_gpfs(fs_context, gpfs_options.delete_version, undefined, true);
             }
