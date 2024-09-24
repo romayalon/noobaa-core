@@ -1856,7 +1856,7 @@ class NamespaceFS {
             await this._load_bucket(params, fs_context);
             const file_path = await this._find_version_path(fs_context, params);
             await this._check_path_in_bucket_boundaries(fs_context, file_path);
-            dbg.log0('NamespaceFS: delete_object', file_path);
+            dbg.log0('NamespaceFS: delete_object', file_path, params.version_id);
             let res;
             if (this._is_versioning_disabled()) {
                 await this._delete_single_object(fs_context, file_path, params);
@@ -1867,7 +1867,7 @@ class NamespaceFS {
             }
             return res || {};
         } catch (err) {
-            console.log('ROMY err', err);
+            dbg.warn('ROMY err', err);
             throw native_fs_utils.translate_error_codes(err, native_fs_utils.entity_enum.OBJECT);
         }
     }
@@ -2745,6 +2745,8 @@ class NamespaceFS {
      */
     // we can use this function when versioning is enabled or suspended
     async _delete_single_object_versioned(fs_context, key, version_id) {
+        dbg.warn('ROMY _delete_single_object_versioned', key, version_id);
+
         let retries = config.NSFS_RENAME_RETRIES;
         const is_gpfs = native_fs_utils._is_gpfs(fs_context);
         const latest_version_path = this._get_file_path({ key });
@@ -2754,8 +2756,19 @@ class NamespaceFS {
             try {
                 file_path = await this._find_version_path(fs_context, { key, version_id });
                 await this._check_path_in_bucket_boundaries(fs_context, file_path);
+                // if between 2755 and 2758 it moved from .versions to to latest or the opposite we will return without deleting
                 const version_info = await this._get_version_info(fs_context, file_path);
-                if (!version_info) return;
+                dbg.warn('ROMY version_info', version_info);
+
+                if (!version_info) {
+                    dbg.warn('ROMY retries', retries, file_path);
+                    if (retries === 0) return;
+                    else {
+                        const enoent = new Error();
+                        enoent.code = 'ENOENT';
+                        throw enoent;
+                    }
+                }
 
                 const deleted_latest = file_path === latest_version_path;
                 if (deleted_latest) {
@@ -2763,11 +2776,20 @@ class NamespaceFS {
                         await this._open_files_gpfs(fs_context, file_path, undefined, undefined, undefined, undefined, true) :
                         undefined;
                     const bucket_tmp_dir_path = this.get_bucket_tmpdir_full_path();
+                    dbg.warn('ROMY deleted_version_id calling safe_unlink', file_path);
+
                     await native_fs_utils.safe_unlink(fs_context, file_path, version_info,
                         gpfs_options?.delete_version, bucket_tmp_dir_path);
+                   dbg.warn('ROMY deleted_version_id version is latest', file_path);
+                   const version_info1 = await this._get_version_info(fs_context, file_path);
+                   dbg.warn('ROMY version_info1', version_info1);
+
                     return { ...version_info, latest: true };
                 } else {
-                    await native_fs_utils.unlink_ignore_enoent(fs_context, file_path);
+                    // ROMY
+                    dbg.warn('ROMY deleted_version_id version is not latest', file_path);
+
+                    await nb_native().fs.unlink(fs_context, file_path);
                 }
                 return version_info;
             } catch (err) {
@@ -2838,6 +2860,7 @@ class NamespaceFS {
     // 2. unlink key
     // 3. if version is latest version - promote second latest -> latest
     async _delete_version_id(fs_context, file_path, params) {
+        console.log('ROMY', )
         // TODO optimization - GPFS link overrides, no need to unlink before promoting, but if there is nothing to promote we should unlink
         const del_obj_version_info = await this._delete_single_object_versioned(fs_context, params.key, params.version_id);
         if (!del_obj_version_info) return {};
@@ -2924,6 +2947,14 @@ class NamespaceFS {
                 const versioned_info = latest_ver_info && await this._get_version_info(fs_context, versioned_path);
 
                 dbg.log1('Namespace_fs._delete_latest_version:', latest_ver_info, versioned_path, versioned_info);
+                // if (!latest_ver_info) {
+                //     if (retries === 0) return;
+                //     else {
+                //         const enoent = new Error();
+                //         enoent.code = 'ENOENT';
+                //         throw enoent;
+                //     }
+                // }
                 if (latest_ver_info) {
                     gpfs_options = is_gpfs ?
                     await this._open_files_gpfs(fs_context, latest_ver_path,
@@ -2935,12 +2966,15 @@ class NamespaceFS {
                     const bucket_tmp_dir_path = this.get_bucket_tmpdir_full_path();
                     if (this._is_versioning_enabled() || suspended_and_latest_is_not_null) {
                         await native_fs_utils._make_path_dirs(versioned_path, fs_context);
+                        dbg.warn('NamespaceFS._delete_latest_version move to versions', latest_ver_path, versioned_path);
                          await native_fs_utils.safe_move(fs_context, latest_ver_path, versioned_path, latest_ver_info,
-                            gpfs_options && gpfs_options.delete_version, bucket_tmp_dir_path);
+                            gpfs_options && gpfs_options.delete_version, bucket_tmp_dir_path); // ROMY check if this wrong and should be move_to_Versions
                          if (suspended_and_latest_is_not_null) {
                             // remove a version (or delete marker) with null version ID from .versions/ (if exists)
                             await this._delete_null_version_from_versions_directory(params.key, fs_context);
-                        }
+                         }
+                         dbg.warn('NamespaceFS._delete_latest_version move to versions done', latest_ver_path, versioned_path);
+
                     } else {
                         // versioning suspended and version_id is null
                         dbg.log1('NamespaceFS._delete_latest_version: suspended mode version ID of the latest version is null - file will be unlinked');

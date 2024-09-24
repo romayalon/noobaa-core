@@ -191,9 +191,11 @@ async function safe_unlink(fs_context, src_path, src_ver_info, gpfs_options, tmp
 // 1. safe_link
 // 2. safe_unlink
 async function safe_move_posix(fs_context, src_path, dst_path, src_ver_info, tmp_dir_path) {
-    dbg.log1('Namespace_fs.safe_move_posix', src_path, dst_path, src_ver_info);
+    dbg.warn('Namespace_fs.safe_move_posix', src_path, dst_path, src_ver_info);
     await safe_link_posix(fs_context, src_path, dst_path, src_ver_info);
     await safe_unlink_posix(fs_context, src_path, src_ver_info, tmp_dir_path);
+    dbg.warn('Namespace_fs.safe_move_posix done', src_path, dst_path, src_ver_info);
+
 }
 
 // safe_link_posix links src_path to dst_path while verifing dst_path has the expected ino and mtimeNsBigint values
@@ -208,23 +210,30 @@ async function safe_move_gpfs(fs_context, src_path, dst_path, gpfs_options) {
 
 // safe_link_posix links src_path to dst_path while verifing dst_path has the expected ino and mtimeNsBigint values
 async function safe_link_posix(fs_context, src_path, dst_path, src_version_info) {
-    dbg.log1('Namespace_fs.safe_link_posix:', src_path, dst_path, src_version_info);
+    dbg.warn('Namespace_fs.safe_link_posix:', src_path, dst_path, src_version_info);
     await nb_native().fs.safe_link(fs_context, src_path, dst_path, src_version_info.mtimeNsBigint, src_version_info.ino);
+    dbg.warn('Namespace_fs.safe_link_posix: done', src_path, dst_path, src_version_info);
+
 }
 
 // 1. create unique temp path
 // 2. safe unlink path_to_delete while verifing the file to be deleted has the expected mtimeNsBigint and ino values
 async function safe_unlink_posix(fs_context, to_delete_path, to_delete_version_info, tmp_dir_path) {
-    dbg.log1('Namespace_fs.safe_unlink_posix:', to_delete_path, to_delete_version_info, tmp_dir_path);
+    dbg.warn('Namespace_fs.safe_unlink_posix:', to_delete_path, to_delete_version_info, tmp_dir_path);
     try {
         const unique_temp_path = await _generate_unique_path(fs_context, tmp_dir_path);
         const { mtimeNsBigint, ino } = to_delete_version_info;
         await nb_native().fs.safe_unlink(fs_context, to_delete_path, unique_temp_path, mtimeNsBigint, ino);
+        dbg.warn('Namespace_fs.safe_unlink_posix: done', to_delete_path, to_delete_version_info, tmp_dir_path);
+
     } catch (err) {
-        if (err.code === 'ENOENT') {
-            dbg.warn('Namespace_fs.safe_unlink_posix unlink: file already deleted, ignoring..');
-            return;
-        }
+        dbg.warn('Namespace_fs.safe_unlink_posix: err', to_delete_path, to_delete_version_info, tmp_dir_path);
+
+        // ROMY
+        // if (err.code === 'ENOENT') {
+        //     dbg.warn('Namespace_fs.safe_unlink_posix unlink: file already deleted, ignoring..');
+        //     return;
+        // }
         throw err;
     }
 }
