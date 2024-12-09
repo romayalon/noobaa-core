@@ -29,6 +29,9 @@ async function manage_diagnose_operations(action, user_input, config_fs) {
         case DIAGNOSE_ACTIONS.METRICS:
             await gather_metrics();
             break;
+        // case DIAGNOSE_ACTIONS.NETWORK:
+        //     await test_network();
+        //     break;
         default:
             throw_cli_error(ManageCLIError.InvalidAction);
     }
