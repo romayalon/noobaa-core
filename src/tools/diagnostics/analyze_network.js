@@ -52,8 +52,9 @@ async function test_network(services_info) {
  * analyze_service
  */
 async function analyze_service(service_type, service_info) {
-    await ping_service(service_info);
     await nslookup_service(service_info);
+    await ping_service(service_info); // ping DNS
+    await ping_service(service_info); // ping IP
     await curl_service(service_info);
     const analyze_service_closure = ANALYZE_FUNCTION_BY_SERVICE_TYPE[service_type];
     await analyze_service_closure(service_info);
@@ -86,7 +87,7 @@ async function analyze_sts(service_info) {
 }
 
 async function analyze_iam(service_info) {
-
+    // nice to have
 }
 
 async function analyze_db(service_info) {
@@ -104,6 +105,7 @@ async function analyze_metrics(service_info) {
 /////////////////////////////////
 ///           NC               //
 /////////////////////////////////
+
 async function analyze_forks() {
 
 }
