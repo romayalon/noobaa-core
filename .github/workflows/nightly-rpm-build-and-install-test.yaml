@@ -1,0 +1,19 @@
+name: Nightly RPM Build and Install Test
+on: 
+  schedule:
+    - cron: '0 0 * * *'
+      
+jobs:
+  call-master-rpm-build-and-install-9:
+    uses: ./.github/workflows/rpm-build-and-install.yaml
+    secrets: inherit
+    with:
+      branch: 'master'
+      centos_ver: '9'
+  
+  call-master-rpm-build-and-install-8:
+    uses: ./.github/workflows/rpm-build-and-install.yaml
+    secrets: inherit
+    with:
+      branch: 'master'
+      centos_ver: '8'

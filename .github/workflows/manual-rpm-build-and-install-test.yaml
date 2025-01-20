@@ -1,4 +1,4 @@
-name: Manual RPM Build and Install Dispatch
+name: Manual RPM Build and Install Test Dispatch
 on: 
   workflow_dispatch:
     inputs:
@@ -21,15 +21,8 @@ on:
           - 'linux/ppc64le'
 
 jobs:
-  build-rpm-and-install:
-      runs-on: ubuntu-latest
-      timeout-minutes: 90
-      steps:
-        - name: Checkout
-          uses: actions/checkout@v4
-          with:
-            ref: ${{ inputs.branch }}
-  
-        - name: Run Non Containerized RPM Test
-          run: |
-            make rpm_build_and_install BUILD_S3SELECT=0 CENTOS_VER=${{ inputs.centos_ver }} CONTAINER_PLATFORM=${{ inputs.architecture }}
+  manual-build-rpm-and-install:
+    uses: ./.github/workflows/rpm-build-and-install-test-base.yaml
+    with:
+      branch: ${{ github.event.inputs.branch }}
+      centos_ver: ${{ github.event.inputs.centos_ver }}
