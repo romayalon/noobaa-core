@@ -15,7 +15,7 @@ RUN dnf update -y -q && \
     dnf group install -y -q "Development Tools" && \
     dnf clean all
 
-RUN mkdir -p /usr/local/lib/python3.6/site-packages
+RUN mkdir -p /usr/local/lib/python3.8/site-packages
 RUN alternatives --set python /usr/bin/python3
 
 WORKDIR /noobaa
