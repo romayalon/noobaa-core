@@ -7,18 +7,6 @@ POSTGRES_IMAGE?="centos/postgresql-12-centos7"
 MONGO_IMAGE?="centos/mongodb-36-centos7"
 CENTOS_VER?=9
 
-## RPM VARIABLES 
-DATE := $(shell date +'%Y%m%d')
-NOOBAA_PKG_VERSION := $(shell jq -r '.version' < ./package.json)
-RPM_BASE_VERSION := noobaa-core-$(NOOBAA_PKG_VERSION)-${DATE}
-ifeq ($(CONTAINER_PLATFORM), linux/amd64)
-  ARCH_SUFFIX := x86_64
-else ifeq ($(CONTAINER_PLATFORM), linux/ppc64le)
-  ARCH_SUFFIX := ppc64le
-endif
-RPM_FULL_PATH := $(RPM_BASE_VERSION).el${CENTOS_VER}.$(ARCH_SUFFIX).rpm
-install_rpm_and_deps_command := dnf install -y make && rpm -i $(RPM_FULL_PATH) && systemctl enable noobaa --now && systemctl status noobaa && systemctl stop noobaa
-
 CONTAINER_ENGINE?=$(shell docker version >/dev/null 2>&1 && echo docker)
 ifeq ($(CONTAINER_ENGINE),)
 	CONTAINER_ENGINE=$(shell podman version >/dev/null 2>&1 && echo podman)
@@ -95,6 +83,18 @@ endif
 
 BUILD_S3SELECT?=1
 BUILD_S3SELECT_PARQUET?=0
+
+## RPM VARIABLES 
+DATE := $(shell date +'%Y%m%d')
+NOOBAA_PKG_VERSION := $(shell jq -r '.version' < ./package.json)
+RPM_BASE_VERSION := noobaa-core-$(NOOBAA_PKG_VERSION)-${DATE}
+ifeq ($(CONTAINER_PLATFORM), linux/amd64)
+  ARCH_SUFFIX := x86_64
+else ifeq ($(CONTAINER_PLATFORM), linux/ppc64le)
+  ARCH_SUFFIX := ppc64le
+endif
+RPM_FULL_PATH := $(RPM_BASE_VERSION).el${CENTOS_VER}.$(ARCH_SUFFIX).rpm
+install_rpm_and_deps_command := dnf install -y make && rpm -i $(RPM_FULL_PATH) && systemctl enable noobaa --now && systemctl status noobaa && systemctl stop noobaa
 
 ###############
 # BUILD LOCAL #
@@ -191,13 +191,11 @@ rpm: builder
 .PHONY: rpm
 
 rpm_build_and_install: rpm
-	@echo "rpm_full_path=$(RPM_FULL_PATH)"
-	@echo "install_rpm_and_deps_command=$(install_rpm_and_deps_command)"
 	@echo "Running RHEL container..."
-	$(CONTAINER_ENGINE) run --name noobaa-rpm-build-and-install --privileged --user root -dit --platform=linux/amd64 redhat/ubi9-init
-	@echo "Copying RPM to the container..."
+	$(CONTAINER_ENGINE) run --name noobaa-rpm-build-and-install --privileged --user root -dit --platform=linux/amd64 redhat/ubi$(CENTOS_VER)-init
+	@echo "Copying rpm_full_path=$(RPM_FULL_PATH) to the container..."
 	$(CONTAINER_ENGINE) cp ./build/rpm/$(RPM_FULL_PATH) noobaa-rpm-build-and-install:$(RPM_FULL_PATH)
-	@echo "Installing RPM and dependencies in the container..."
+	@echo "Installing RPM and dependencies in the container... $(install_rpm_and_deps_command)"
 	$(CONTAINER_ENGINE) exec noobaa-rpm-build-and-install bash -c "$(install_rpm_and_deps_command)"
 .PHONY: rpm_build_and_install
 
