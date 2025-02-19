@@ -112,7 +112,7 @@ async function get_object(req, res) {
             return;
         }
     }
-
+    http_utils.set_response_override(req, res);
     const read_stream = await req.object_sdk.read_object_stream(params, res);
     if (read_stream) {
         // if read_stream supports closing, then we handle abort cases such as http disconnection
