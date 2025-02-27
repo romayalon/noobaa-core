@@ -16,6 +16,7 @@ const { account_id_cache } = require('../sdk/accountspace_fs');
 const ManageCLIError = require('../manage_nsfs/manage_nsfs_cli_errors').ManageCLIError;
 const ManageCLIResponse = require('../manage_nsfs/manage_nsfs_cli_responses').ManageCLIResponse;
 const manage_nsfs_glacier = require('../manage_nsfs/manage_nsfs_glacier');
+const noobaa_cli_lifecycle = require('../manage_nsfs/nc_lifecycle');
 const manage_nsfs_logging = require('../manage_nsfs/manage_nsfs_logging');
 const noobaa_cli_diagnose = require('../manage_nsfs/diagnose');
 const noobaa_cli_upgrade = require('../manage_nsfs/upgrade');
@@ -79,6 +80,8 @@ async function main(argv = minimist(process.argv.slice(2))) {
             await notification_management();
         } else if (type === TYPES.CONNECTION) {
             await connection_management(action, user_input);
+        } else if (type === TYPES.LIFECYCLE) {
+            await lifecycle_management();
         } else {
             throw_cli_error(ManageCLIError.InvalidType);
         }
@@ -856,6 +859,18 @@ async function list_connections() {
     conns = conns.filter(item => item);
 
     return conns;
+}
+
+////////////////////
+///// LIFECYCLE ////
+////////////////////
+
+/**
+ * lifecycle_management runs the nc lifecycle management
+ * @returns {Promise<void>}
+ */
+async function lifecycle_management() {
+    await noobaa_cli_lifecycle.run_lifecycle(config_fs);
 }
 
 exports.main = main;
