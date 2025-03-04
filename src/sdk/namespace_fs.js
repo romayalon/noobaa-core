@@ -2632,17 +2632,18 @@ class NamespaceFS {
     async _delete_path_dirs(file_path, fs_context) {
         try {
             let dir_path = path.dirname(file_path);
+            const deleted_file_is_dir = file_path.endsWith('/');
+            const deleted_file_is_dir_object = file_path.endsWith(config.NSFS_FOLDER_OBJECT_NAME);
+            let should_check_dir_path_is_content_dir = !deleted_file_is_dir && !deleted_file_is_dir_object;
             while (dir_path !== this.bucket_path) {
-                const file_is_dir = file_path === path.join(dir_path, '/');
-                const file_is_dir_content_hidden_file = file_path === path.join(dir_path, config.NSFS_FOLDER_OBJECT_NAME);
-                const file_is_regular_obj = !file_is_dir && !file_is_dir_content_hidden_file;
-                if (file_is_regular_obj) {
+                if (should_check_dir_path_is_content_dir) {
                     const dir_stat = await nb_native().fs.stat(fs_context, dir_path);
                     const file_is_disabled_dir_content = dir_stat.xattr && dir_stat.xattr[XATTR_DIR_CONTENT] !== undefined;
                     if (file_is_disabled_dir_content) break;
                 }
                 await nb_native().fs.rmdir(fs_context, dir_path);
                 dir_path = path.dirname(dir_path);
+                should_check_dir_path_is_content_dir = true;
             }
         } catch (err) {
             if (err.code !== 'ENOTEMPTY' &&
