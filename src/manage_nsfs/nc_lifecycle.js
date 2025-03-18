@@ -350,14 +350,18 @@ function validate_rule_enabled(rule, bucket) {
 ////////////////////////////////////
 
 /**
- * @param {Object} entry list object entry
+ * _get_lifecycle_object_info_from_list_object_entry returns entry properties needed for processing the rule
+ * @param {Object} entry
+ * @param {Object} [successor_entry] 
+ * @returns {{key: String, age: Number, size: Number, tags: Object, age_non_current?: Number}}
  */
-function _get_lifecycle_object_info_from_list_object_entry(entry) {
+function _get_lifecycle_object_info_from_list_object_entry(entry, successor_entry) {
     return {
         key: entry.key,
         age: _get_file_age_days(entry.create_time),
         size: entry.size,
         tags: entry.tagging,
+        age_non_current: successor_entry && _get_file_age_days(successor_entry.create_time),
     };
 }
 
@@ -436,10 +440,54 @@ async function get_candidates_by_expiration_delete_marker_rule(lifecycle_rule, b
  * @param {Object} bucket_json
  * @returns {Promise<Object[]>}
  */
-async function get_candidates_by_noncurrent_version_expiration_rule(lifecycle_rule, bucket_json) {
-    // TODO - implement
-    return [];
-}
+async function get_candidates_by_noncurrent_version_expiration_rule(lifecycle_rule, bucket_json, object_sdk, {versions_list}) {
+    if (!versions_list) {
+        versions_list = await object_sdk.list_object_versions({bucket: bucket_json.name, prefix: lifecycle_rule.filter?.prefix});
+    }
+    const filter_func = _build_lifecycle_filter({ filter: lifecycle_rule.filter, expiration: 0 });
+    
+    const newer_non_current_candidates = {};
+    if (lifecycle_rule.noncurrent_version_expiration.newer_noncurrent_versions) {
+        const NewerNoncurrentVersions = lifecycle_rule.noncurrent_version_expiration.newer_noncurrent_versions;
+        versions_list.objects.forEach(entry => {
+            if (newer_noncurrent_versions_filter.process_entry(entry, NewerNoncurrentVersions, filter_func)) {
+                newer_non_current_candidates[version.key] = { key: version.key, version_id: version.version_id }
+
+            }
+        });
+        if (!versions_list.is_truncated) {
+            newer_noncurrent_versions_filter.clear_state();
+        }
+    }
+    const non_current_days_candidates = {};
+    if (lifecycle_rule.noncurrent_version_expiration.noncurrent_days) {
+        const non_current_days = lifecycle_rule.noncurrent_version_expiration.noncurrent_days;
+        for (let index = 0; index < versions_list.objects.length; index++) {
+            const version = versions_list.objects[index];
+            // the list should be sorted by key + mtime, therefore the successor should be one version above in the list 
+            const successor_version = index > 0 && versions_list.objects[index - 1];
+            const is_successor_same_key = successor_version ? successor_version.key === version.key : false;
+            const version_info = _get_lifecycle_object_info_from_list_object_entry(version, is_successor_same_key && successor_version);
+            if (filter_func(version_info) && version_info.age_non_current >= non_current_days) {
+                // optimization - we can add here a check if it's in newer list and avoid time merging the 2 lists, but it's less readable
+                non_current_days_candidates[version.key] = { key: version.key, version_id: version.version_id }
+            }
+            
+        }
+    }
+    // merge the lists
+    let delete_candidates = [];
+    const num_candidates_by_days = Object.keys(non_current_days_candidates).length;
+    const num_candidates_newer = Object.keys(newer_non_current_candidates).length;
+    if (num_candidates_by_days === 0 && num_candidates_newer === 0) delete_candidates = [];
+    else if (num_candidates_by_days === 0) delete_candidates = Object.values(newer_non_current_candidates);
+    else if (num_candidates_newer === 0) delete_candidates = Object.values(non_current_days_candidates);
+    for (const candidate of Object.values(non_current_days_candidates)) {
+        if (newer_non_current_candidates[candidate.key]) {
+            delete_candidates.push(candidate);
+        }
+    }
+    return delete_candidates;
 
 ////////////////////////////////////
 ///////// ABORT MPU HELPERS ////////
