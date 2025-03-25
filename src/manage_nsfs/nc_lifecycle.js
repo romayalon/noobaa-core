@@ -20,8 +20,7 @@ const SensitiveString = require('../util/sensitive_string');
 
 // TODO:
 // implement
-// 1. notifications
-// 2. POSIX scanning and filtering per rule
+// 2. POSIX scanning and filtering per rule - non current + expired delete marker
 // 3. GPFS ILM policy and apply for scanning and filtering optimization
 // TODO - we will filter during the scan except for get_candidates_by_expiration_rule on GPFS that does the filter on the file system
 
@@ -441,12 +440,145 @@ async function get_candidates_by_expiration_rule(lifecycle_rule, bucket_json, ob
 }
 
 /**
- *
+ * get_candidates_by_expiration_rule_gpfs does the following - 
+ * 1. converts the lifecycle rule to GPFS ILM policy
+ * 2. writes the ILM policy to a tmp file
+ * 3. gets the candidates by applying the ILM policy
+ * 4. parses the candidates from the ILM policy
  * @param {*} lifecycle_rule
  * @param {Object} bucket_json
  * @returns {Promise<Object[]>}
  */
 async function get_candidates_by_expiration_rule_gpfs(lifecycle_rule, bucket_json) {
+    const ilm_policy = await convert_lifecycle_policy_to_gpfs_ilm_policy(lifecycle_rule, bucket_json);
+    const ilm_policy_tmp_path = await write_tmp_ilm_policy(ilm_policy);
+    const candidates = await get_candidates_by_gpfs_ilm_policy(bucket_json, ilm_policy_tmp_path);
+    const parsed_candidates = await parse_candidates_from_gpfs_ilm_policy(candidates);
+    return parsed_candidates;
+}
+
+////////////////////////////////////////////
+// GPFS ILM POLICIES OPTIMIZATION HELPERS //
+////////////////////////////////////////////
+
+/**
+ * convert_lifecycle_policy_to_gpfs_ilm_policy converts the lifecycle rule to GPFS ILM policy
+ * @param {*} lifecycle_rule 
+ * @param {Object} bucket_json 
+ * @returns {String}
+ */
+function convert_lifecycle_policy_to_gpfs_ilm_policy(lifecycle_rule, bucket_json) {
+    const bucket_path = bucket_json.path;
+    const { id, expiration = undefined, noncurrent_version_expiration = undefined } = lifecycle_rule;
+
+    const definitions_base = `
+    define( mod_age, (DAYS(CURRENT_TIMESTAMP) - DAYS(MODIFICATION_TIME)) )
+    define( change_age, (DAYS(CURRENT_TIMESTAMP) - DAYS(CHANGE_TIME)) )\n`;
+
+    const policy_base = `RULE 'expList' EXTERNAL LIST ${id} EXEC ''
+    RULE ${id} LIST ${id}
+    WHERE PATH_NAME LIKE ${bucket_path}/%
+    AND PATH_NAME NOT LIKE ${bucket_path}/.noobaa_nsfs%/%\n`;
+
+    let path_policy = ``;
+
+    if (expiration && !noncurrent_version_expiration?.days) {
+        path_policy += `
+        AND PATH_NAME NOT LIKE ${bucket_path}/.versions/%
+        AND PATH_NAME NOT LIKE ${bucket_path}/%/.versions/%\n`;
+    }
+
+    if (noncurrent_version_expiration?.days && !expiration) {
+        path_policy += `
+        AND PATH_NAME LIKE ${bucket_path}/.versions/%
+        AND PATH_NAME LIKE ${bucket_path}/%/.versions/%\n`;
+    }
+
+    const expiry_policy = convert_expiry_rule_to_gpfs_ilm_policy(lifecycle_rule, bucket_json);
+    const filter_policy = convert_filter_to_gpfs_ilm_policy(lifecycle_rule, bucket_json);
+    const noncurrent_days_policy = convert_noncurrent_version_by_days_to_gpfs_ilm_policy(lifecycle_rule, bucket_json);
+    return definitions_base + policy_base + path_policy + expiry_policy + noncurrent_days_policy + filter_policy;
+}
+
+/**
+ * convert_expiry_rule_to_gpfs_ilm_policy converts the expiry rule to GPFS ILM policy
+ * @param {*} lifecycle_rule 
+ * @param {Object} bucket_json 
+ * @returns {String}
+ */
+function convert_expiry_rule_to_gpfs_ilm_policy(lifecycle_rule, bucket_json) {
+    const { expiration = undefined } = lifecycle_rule;
+    let expiry_policy = '';
+    if (expiration) {
+        const { days, date } = expiration;
+        if (days) {
+            expiry_policy += `AND mod_age > ${days}\n`;
+        } else if (date) {
+            expiry_policy += `AND mod_age > ${_get_file_age_days(new Date(date).getTime())}\n`;
+        }
+    }
+    return expiry_policy;
+}
+
+/**
+ * convert_filter_to_gpfs_ilm_policy converts the filter to GPFS ILM policy
+ * @param {*} lifecycle_rule 
+ * @param {Object} bucket_json 
+ * @returns {String}
+ */
+function convert_filter_to_gpfs_ilm_policy(lifecycle_rule, bucket_json) {
+    const { filter = undefined } = lifecycle_rule;
+    const bucket_path = bucket_json.path;
+    let filter_policy = '';
+    if (filter) {
+        const { object_size_greater_than, object_size_less_than, tags } = filter;
+        const prefix = lifecycle_rule.prefix || filter.prefix;
+        filter_policy += prefix ? `AND PATH_NAME LIKE ${bucket_path}/${prefix}%\n` : '';
+        filter_policy += object_size_greater_than ? `AND FILE_SIZE > ${object_size_greater_than}\n` : '';
+        filter_policy += object_size_less_than ? `AND FILE_SIZE < ${object_size_less_than}\n` : '';
+        filter_policy += tags ? tags.map(tag => `AND XATTR('user.noobaa.tag.${tag.key}') LIKE ${tag.value}\n`).join('') : '';
+    }
+    return filter_policy;
+}
+
+/**
+ * convert_noncurrent_version_to_gpfs_ilm_policy converts the noncurrent version by days to GPFS ILM policy
+ * @param {*} lifecycle_rule 
+ * @param {Object} bucket_json 
+ */
+function convert_noncurrent_version_by_days_to_gpfs_ilm_policy(lifecycle_rule, bucket_json) {
+    // TODO - implement
+    return '';
+}
+
+/**
+ * write_tmp_ilm_policy writes the ILM policy string to a tmp file
+ * @param {String} ilm_policy_string
+ * @returns {Promise<String>}
+ */
+async function write_tmp_ilm_policy(ilm_policy_string) {
+    // TODO - implement
+    return '';
+}
+
+/**
+ * get_candidates_by_gpfs_ilm_policy gets the candidates by applying the ILM policy using mmapplypolicy
+ * the return value is a path to the output file that contains the candidates
+ * @param {Object} bucket_json 
+ * @param {String} ilm_policy_tmp_path
+ * @returns {Promise<String>}
+ */
+async function get_candidates_by_gpfs_ilm_policy(bucket_json, ilm_policy_tmp_path) {
+    // TODO - implement
+    return '';
+}
+
+/**
+ * parse_candidates_from_gpfs_ilm_policy
+ * @param {*} candidates_tmp_path 
+ * @returns 
+ */
+async function parse_candidates_from_gpfs_ilm_policy(candidates_tmp_path) {
     // TODO - implement
     return [];
 }
