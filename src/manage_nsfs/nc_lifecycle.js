@@ -31,7 +31,6 @@ const LIFECYLE_TIMESTAMP_FILE = 'lifecycle.timestamp';
 const config_fs_options = { silent_if_missing: true };
 const policies_tmp_dir = path.join(config.NC_LIFECYCLE_LOGS_DIR, 'lifecycle_ilm_policies');
 const candidates_tmp_dir = path.join(config.NC_LIFECYCLE_LOGS_DIR, 'lifecycle_ilm_candidates');
-let resume = false;
 
 const lifecycle_run_status = {
     running_host: os.hostname(), lifecycle_run_times: {},
@@ -383,7 +382,8 @@ async function get_candidates(bucket_json, lifecycle_rule, object_sdk, fs_contex
     const candidates = { abort_mpu_candidates: [], delete_candidates: [] };
     const rule_state = lifecycle_run_status.buckets_statuses[bucket_json.name].rules_statuses[lifecycle_rule.id]?.state || {};
     if (lifecycle_rule.expiration) {
-        candidates.delete_candidates = await get_candidates_by_expiration_rule(fs_context, lifecycle_rule, bucket_json, object_sdk, rule_state);
+        candidates.delete_candidates = await get_candidates_by_expiration_rule(fs_context, lifecycle_rule, bucket_json,
+            object_sdk, rule_state);
         if (lifecycle_rule.expiration.days || lifecycle_rule.expiration.expired_object_delete_marker) {
             const dm_candidates = await get_candidates_by_expiration_delete_marker_rule(lifecycle_rule, bucket_json);
             candidates.delete_candidates = candidates.delete_candidates.concat(dm_candidates);
@@ -462,8 +462,8 @@ async function get_candidates_by_expiration_rule(fs_context, lifecycle_rule, buc
 async function get_candidates_by_expiration_rule_gpfs(fs_context, lifecycle_rule, bucket_json) {
     const ilm_policy = await convert_lifecycle_policy_to_gpfs_ilm_policy(lifecycle_rule, bucket_json);
     const ilm_policy_tmp_path = await write_tmp_ilm_policy(fs_context, lifecycle_rule, ilm_policy);
-    const candidates = await get_candidates_by_gpfs_ilm_policy(bucket_json, ilm_policy_tmp_path);
-    const parsed_candidates = await parse_candidates_from_gpfs_ilm_policy(candidates);
+    const rule_candidates_path = await get_candidates_by_gpfs_ilm_policy(bucket_json, ilm_policy_tmp_path);
+    const parsed_candidates = await parse_candidates_from_gpfs_ilm_policy(fs_context, bucket_json, lifecycle_rule, rule_candidates_path);
     return parsed_candidates;
 }
 
@@ -610,18 +610,42 @@ async function get_candidates_by_gpfs_ilm_policy(lifecyle_rule, ilm_policy_tmp_p
 
 /**
  * parse_candidates_from_gpfs_ilm_policy
+ * TODO - when adding resume, we should read the key_marker from current status or from the rule log file
+ * TODO - move dbg0 to dbg2
  * @param {nb.NativeFSContext} fs_context 
- * @param {String} candidates_tmp_path 
+ * @param {Object} bucket_json
+ * @param {*} lifecycle_rule
+ * @param {String} rule_candidates_path 
  * @returns 
  */
-async function parse_candidates_from_gpfs_ilm_policy(fs_context, candidates_tmp_path) {
+async function parse_candidates_from_gpfs_ilm_policy(fs_context, bucket_json, lifecycle_rule, rule_candidates_path) {
     const parsed_candidates_array = [];
-    const reader = new NewlineReader(fs_context, candidates_tmp_path, { lock: 'SHARED' });
-    await reader.forEachFilePathEntry(async entry => {
-        if (parsed_candidates_array.length >= config.NC_LIFECYCLE_LIST_BATCH_SIZE) return;
-        if (!key_marker || entry.path > key_marker) parsed_candidates_array.push({ key: entry.path });
-        return true;
+    const rule_state = lifecycle_run_status.buckets_statuses[bucket_json.name].rules_statuses[lifecycle_rule.id]?.state;
+    // TODO - init state if it's undefined
+    const key_marker = rule_state.key_marker_count;
+    const reader = new NewlineReader(fs_context, rule_candidates_path, { lock: 'SHARED' });
+    reader.readoffset = rule_state?.key_marker_count || 0; // set offset so we won't need to read the file from the beginning
+    const [count, is_finished] = await reader.forEachFilePathEntry(async entry => {
+        dbg.log0('parse_candidates_from_gpfs_ilm_policy: parsed_candidates_array.length', parsed_candidates_array.length, 'config.NC_LIFECYCLE_LIST_BATCH_SIZE', config.NC_LIFECYCLE_LIST_BATCH_SIZE);
+        dbg.log0('parse_candidates_from_gpfs_ilm_policy: entry', entry, entry?.path);
+        if (parsed_candidates_array.length > config.NC_LIFECYCLE_LIST_BATCH_SIZE) {
+            rule_state.key_marker = entry.path;
+            rule_state.key_marker_count = reader.readoffset;
+            return false; // stop reading
+        }
+        dbg.log0('parse_candidates_from_gpfs_ilm_policy: key_marker', key_marker, entry.path > key_marker);
+        // I think it won't work this way and we need to parse but let's try
+        //if (!key_marker || entry.path > key_marker) parsed_candidates_array.push({ key: entry.path }); // no need of key marker if we can read from the count line directly
+        parsed_candidates_array.push({ key: entry.path });
+        return true; // continue reading
     });
+    dbg.log0('parse_candidates_from_gpfs_ilm_policy: count', count, 'is_finished', is_finished);
+    if (is_finished) {
+        rule_state.key_marker = undefined;
+        rule_state.key_marker_count = undefined;
+        rule_state.is_finished = true;
+    }
+    dbg.log0('parse_candidates_from_gpfs_ilm_policy: parsed_candidates_array', parsed_candidates_array);
     return parsed_candidates_array;
 }
 
