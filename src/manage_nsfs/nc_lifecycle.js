@@ -8,9 +8,11 @@ const path = require('path');
 const util = require('util');
 const P = require('../util/promise');
 const config = require('../../config');
+const os_utils = require('../util/os_utils');
 const nb_native = require('../util/nb_native');
 const NsfsObjectSDK = require('../sdk/nsfs_object_sdk');
 const native_fs_utils = require('../util/native_fs_utils');
+const { NewlineReader } = require('../util/file_reader');
 const { NoobaaEvent } = require('./manage_nsfs_events_utils');
 const notifications_util = require('../util/notifications_util');
 const ManageCLIError = require('./manage_nsfs_cli_errors').ManageCLIError;
@@ -27,6 +29,9 @@ const SensitiveString = require('../util/sensitive_string');
 const LIFECYCLE_CLUSTER_LOCK = 'lifecycle_cluster.lock';
 const LIFECYLE_TIMESTAMP_FILE = 'lifecycle.timestamp';
 const config_fs_options = { silent_if_missing: true };
+const policies_tmp_dir = path.join(config.NC_LIFECYCLE_LOGS_DIR, 'lifecycle_ilm_policies');
+const candidates_tmp_dir = path.join(config.NC_LIFECYCLE_LOGS_DIR, 'lifecycle_ilm_candidates');
+let resume = false;
 
 const lifecycle_run_status = {
     running_host: os.hostname(), lifecycle_run_times: {},
@@ -370,12 +375,15 @@ async function throw_if_noobaa_not_active(config_fs, system_json) {
  * get_candidates gets the delete and abort candidates for the lifecycle rule
  * @param {Object} bucket_json
  * @param {*} lifecycle_rule
+ * @param {nb.ObjectSDK} object_sdk
+ * @param {nb.NativeFSContext} fs_context
+ * @reutrns {Promise<Object>}
  */
 async function get_candidates(bucket_json, lifecycle_rule, object_sdk, fs_context) {
     const candidates = { abort_mpu_candidates: [], delete_candidates: [] };
     const rule_state = lifecycle_run_status.buckets_statuses[bucket_json.name].rules_statuses[lifecycle_rule.id]?.state || {};
     if (lifecycle_rule.expiration) {
-        candidates.delete_candidates = await get_candidates_by_expiration_rule(lifecycle_rule, bucket_json, object_sdk, rule_state);
+        candidates.delete_candidates = await get_candidates_by_expiration_rule(fs_context, lifecycle_rule, bucket_json, object_sdk, rule_state);
         if (lifecycle_rule.expiration.days || lifecycle_rule.expiration.expired_object_delete_marker) {
             const dm_candidates = await get_candidates_by_expiration_delete_marker_rule(lifecycle_rule, bucket_json);
             candidates.delete_candidates = candidates.delete_candidates.concat(dm_candidates);
@@ -426,14 +434,15 @@ function _get_lifecycle_object_info_from_list_object_entry(entry) {
 
 /**
  * get_candidates_by_expiration_rule processes the expiration rule
+ * @param {nb.NativeFSContext} fs_context 
  * @param {*} lifecycle_rule
  * @param {Object} bucket_json
  * @returns {Promise<Object[]>}
  */
-async function get_candidates_by_expiration_rule(lifecycle_rule, bucket_json, object_sdk, rule_state) {
+async function get_candidates_by_expiration_rule(fs_context, lifecycle_rule, bucket_json, object_sdk, rule_state) {
     const is_gpfs = nb_native().fs.gpfs;
     if (is_gpfs && config.NC_LIFECYCLE_GPFS_ILM_ENABLED) {
-        return get_candidates_by_expiration_rule_gpfs(lifecycle_rule, bucket_json);
+        return get_candidates_by_expiration_rule_gpfs(fs_context, lifecycle_rule, bucket_json);
     } else {
         return get_candidates_by_expiration_rule_posix(lifecycle_rule, bucket_json, object_sdk, rule_state);
     }
@@ -445,13 +454,14 @@ async function get_candidates_by_expiration_rule(lifecycle_rule, bucket_json, ob
  * 2. writes the ILM policy to a tmp file
  * 3. gets the candidates by applying the ILM policy
  * 4. parses the candidates from the ILM policy
+ * @param {nb.NativeFSContext} fs_context 
  * @param {*} lifecycle_rule
  * @param {Object} bucket_json
  * @returns {Promise<Object[]>}
  */
-async function get_candidates_by_expiration_rule_gpfs(lifecycle_rule, bucket_json) {
+async function get_candidates_by_expiration_rule_gpfs(fs_context, lifecycle_rule, bucket_json) {
     const ilm_policy = await convert_lifecycle_policy_to_gpfs_ilm_policy(lifecycle_rule, bucket_json);
-    const ilm_policy_tmp_path = await write_tmp_ilm_policy(ilm_policy);
+    const ilm_policy_tmp_path = await write_tmp_ilm_policy(fs_context, lifecycle_rule, ilm_policy);
     const candidates = await get_candidates_by_gpfs_ilm_policy(bucket_json, ilm_policy_tmp_path);
     const parsed_candidates = await parse_candidates_from_gpfs_ilm_policy(candidates);
     return parsed_candidates;
@@ -547,40 +557,72 @@ function convert_filter_to_gpfs_ilm_policy(lifecycle_rule, bucket_json) {
  * @param {Object} bucket_json 
  */
 function convert_noncurrent_version_by_days_to_gpfs_ilm_policy(lifecycle_rule, bucket_json) {
-    // TODO - implement
     return '';
 }
 
 /**
  * write_tmp_ilm_policy writes the ILM policy string to a tmp file
+ * TODO - delete the policy on restart and on is_finished of the rule
+ * TODO - should we unlink the policy file if the file already exists? - might be dangerous
+ * @param {nb.NativeFSContext} fs_context 
+ * @param {*} lifecycle_rule
  * @param {String} ilm_policy_string
  * @returns {Promise<String>}
  */
-async function write_tmp_ilm_policy(ilm_policy_string) {
-    // TODO - implement
-    return '';
+async function write_tmp_ilm_policy(fs_context, lifecycle_rule, ilm_policy_string) {
+    try {
+        const ilm_policy_tmp_path = path.join(policies_tmp_dir, lifecycle_rule.id + '_' + lifecycle_rule.lifecycle_run_times.start_time);
+        const ilm_policy_stat = await native_fs_utils.stat_ignore_enoent(fs_context, ilm_policy_tmp_path);
+        if (ilm_policy_stat) {
+            dbg.log2('write_tmp_ilm_policy: policy already exists, ', ilm_policy_tmp_path);
+        } else {
+            // TODO - maybe we should write to tmp file and then link so we won't override the file
+            await nb_native().fs.writeFile(
+                fs_context,
+                ilm_policy_tmp_path,
+                Buffer.from(ilm_policy_string), {
+                mode: native_fs_utils.get_umasked_mode(config.BASE_MODE_FILE),
+            },
+            );
+        }
+        return ilm_policy_tmp_path;
+    } catch (err) {
+        throw new Error(`write_tmp_ilm_policy failed with error ${err}`);
+    }
 }
 
 /**
  * get_candidates_by_gpfs_ilm_policy gets the candidates by applying the ILM policy using mmapplypolicy
  * the return value is a path to the output file that contains the candidates
- * @param {Object} bucket_json 
+ * TODO - check if the output file is created - this is probablt not the correct path
+ * @param {Object} lifecyle_rule 
  * @param {String} ilm_policy_tmp_path
  * @returns {Promise<String>}
  */
-async function get_candidates_by_gpfs_ilm_policy(bucket_json, ilm_policy_tmp_path) {
-    // TODO - implement
-    return '';
+async function get_candidates_by_gpfs_ilm_policy(lifecyle_rule, ilm_policy_tmp_path) {
+    try {
+        const candidates_path = await os_utils.exec(`mmapplypolicy -P ${ilm_policy_tmp_path} -f ${candidates_tmp_dir}`);
+        return path.join(candidates_path, 'list.' + lifecyle_rule.id);
+    } catch (err) {
+        throw new Error(`get_candidates_by_gpfs_ilm_policy failed with error ${err}`);
+    }
 }
 
 /**
  * parse_candidates_from_gpfs_ilm_policy
- * @param {*} candidates_tmp_path 
+ * @param {nb.NativeFSContext} fs_context 
+ * @param {String} candidates_tmp_path 
  * @returns 
  */
-async function parse_candidates_from_gpfs_ilm_policy(candidates_tmp_path) {
-    // TODO - implement
-    return [];
+async function parse_candidates_from_gpfs_ilm_policy(fs_context, candidates_tmp_path) {
+    const parsed_candidates_array = [];
+    const reader = new NewlineReader(fs_context, candidates_tmp_path, { lock: 'SHARED' });
+    await reader.forEachFilePathEntry(async entry => {
+        if (parsed_candidates_array.length >= config.NC_LIFECYCLE_LIST_BATCH_SIZE) return;
+        if (!key_marker || entry.path > key_marker) parsed_candidates_array.push({ key: entry.path });
+        return true;
+    });
+    return parsed_candidates_array;
 }
 
 /**

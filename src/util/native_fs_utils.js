@@ -458,7 +458,7 @@ async function update_config_file(fs_context, schema_dir, config_path, config_da
             open_path = schema_dir;
         } else {
             stat = await nb_native().fs.stat(fs_context, config_path);
-            await safe_unlink(fs_context, config_path, stat, undefined, tmp_dir_path);
+            await safe_unlink(fs_context, config_path, stat, undefined, tmp_dir_path); // ROMY
             open_path = await _generate_unique_path(fs_context, tmp_dir_path);
             upload_tmp_file = await open_file(fs_context, schema_dir, open_path, 'w', config.BASE_MODE_CONFIG_FILE);
         }
