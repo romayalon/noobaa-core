@@ -460,9 +460,12 @@ async function get_candidates_by_expiration_rule(fs_context, lifecycle_rule, buc
  * @returns {Promise<Object[]>}
  */
 async function get_candidates_by_expiration_rule_gpfs(fs_context, lifecycle_rule, bucket_json) {
-    const ilm_policy = await convert_lifecycle_policy_to_gpfs_ilm_policy(lifecycle_rule, bucket_json);
-    const ilm_policy_tmp_path = await write_tmp_ilm_policy(fs_context, lifecycle_rule, ilm_policy);
-    const rule_candidates_path = await get_candidates_by_gpfs_ilm_policy(bucket_json, ilm_policy_tmp_path);
+    const should_expire = lifecycle_rule.expiration && _get_expiration_time(lifecycle_rule.expiration) >= 0;
+    if (!should_expire) return [];
+
+    const ilm_policy = convert_lifecycle_policy_to_gpfs_ilm_policy(lifecycle_rule, bucket_json);
+    const ilm_policy_path = await write_tmp_ilm_policy(fs_context, lifecycle_rule, ilm_policy);
+    const rule_candidates_path = await get_candidates_by_gpfs_ilm_policy(bucket_json, ilm_policy_path);
     const parsed_candidates = await parse_candidates_from_gpfs_ilm_policy(fs_context, bucket_json, lifecycle_rule, rule_candidates_path);
     return parsed_candidates;
 }
@@ -473,6 +476,7 @@ async function get_candidates_by_expiration_rule_gpfs(fs_context, lifecycle_rule
 
 /**
  * convert_lifecycle_policy_to_gpfs_ilm_policy converts the lifecycle rule to GPFS ILM policy
+ * TODO - non current can't be on the same policy, when implementing non current we should split the policies
  * @param {*} lifecycle_rule 
  * @param {Object} bucket_json 
  * @returns {String}
@@ -503,30 +507,19 @@ function convert_lifecycle_policy_to_gpfs_ilm_policy(lifecycle_rule, bucket_json
         AND PATH_NAME LIKE ${bucket_path}/.versions/%
         AND PATH_NAME LIKE ${bucket_path}/%/.versions/%\n`;
     }
-
-    const expiry_policy = convert_expiry_rule_to_gpfs_ilm_policy(lifecycle_rule, bucket_json);
+    const expiry_policy = convert_expiry_rule_to_gpfs_ilm_policy(lifecycle_rule);
     const filter_policy = convert_filter_to_gpfs_ilm_policy(lifecycle_rule, bucket_json);
-    const noncurrent_days_policy = convert_noncurrent_version_by_days_to_gpfs_ilm_policy(lifecycle_rule, bucket_json);
-    return definitions_base + policy_base + path_policy + expiry_policy + noncurrent_days_policy + filter_policy;
+    return definitions_base + policy_base + path_policy + expiry_policy + filter_policy;
 }
 
 /**
  * convert_expiry_rule_to_gpfs_ilm_policy converts the expiry rule to GPFS ILM policy
  * @param {*} lifecycle_rule 
- * @param {Object} bucket_json 
  * @returns {String}
  */
-function convert_expiry_rule_to_gpfs_ilm_policy(lifecycle_rule, bucket_json) {
+function convert_expiry_rule_to_gpfs_ilm_policy(lifecycle_rule) {
     const { expiration = undefined } = lifecycle_rule;
-    let expiry_policy = '';
-    if (expiration) {
-        const { days, date } = expiration;
-        if (days) {
-            expiry_policy += `AND mod_age > ${days}\n`;
-        } else if (date) {
-            expiry_policy += `AND mod_age > ${_get_file_age_days(new Date(date).getTime())}\n`;
-        }
-    }
+    const expiry_policy = expiration?.days ? `AND mod_age > ${expiration.days}\n` : '';
     return expiry_policy;
 }
 
@@ -537,13 +530,13 @@ function convert_expiry_rule_to_gpfs_ilm_policy(lifecycle_rule, bucket_json) {
  * @returns {String}
  */
 function convert_filter_to_gpfs_ilm_policy(lifecycle_rule, bucket_json) {
-    const { filter = undefined } = lifecycle_rule;
+    const { prefix = undefined, filter = {} } = lifecycle_rule;
     const bucket_path = bucket_json.path;
     let filter_policy = '';
-    if (filter) {
-        const { object_size_greater_than, object_size_less_than, tags } = filter;
-        const prefix = lifecycle_rule.prefix || filter.prefix;
-        filter_policy += prefix ? `AND PATH_NAME LIKE ${bucket_path}/${prefix}%\n` : '';
+    if (prefix || Object.keys(filter).length > 0) {
+        const { object_size_greater_than = undefined, object_size_less_than = undefined, tags = undefined } = filter;
+        const rule_prefix = prefix || filter.prefix;
+        filter_policy += rule_prefix ? `AND PATH_NAME LIKE ${bucket_path}/${rule_prefix}%\n` : '';
         filter_policy += object_size_greater_than ? `AND FILE_SIZE > ${object_size_greater_than}\n` : '';
         filter_policy += object_size_less_than ? `AND FILE_SIZE < ${object_size_less_than}\n` : '';
         filter_policy += tags ? tags.map(tag => `AND XATTR('user.noobaa.tag.${tag.key}') LIKE ${tag.value}\n`).join('') : '';
@@ -1045,4 +1038,6 @@ async function write_lifecycle_log_file(fs_context, lifecyle_logs_dir_path) {
 
 // EXPORTS
 exports.run_lifecycle_under_lock = run_lifecycle_under_lock;
+exports.convert_expiry_rule_to_gpfs_ilm_policy = convert_expiry_rule_to_gpfs_ilm_policy;
+exports.convert_filter_to_gpfs_ilm_policy = convert_filter_to_gpfs_ilm_policy;
 
