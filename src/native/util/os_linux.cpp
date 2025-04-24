@@ -101,7 +101,7 @@ ThreadScope::restore_user()
         // must restore uid first otherwise will fail on permission
         MUST_SYS(syscall(SYS_setresuid, -1, orig_uid, -1));
         MUST_SYS(syscall(SYS_setresgid, -1, orig_gid, -1));
-        LOG("ROMY::restore_user LINUX " << DVAL(orig_groups.size()) << DVAL(&orig_groups[0]));
+        LOG("ROMY::restore_user LINUX " << DVAL(orig_groups.size()) << DVAL(orig_groups[0]) << DVAL(&orig_groups[0]));
         MUST_SYS(syscall(SYS_setgroups, orig_groups.size(), &orig_groups[0]));
     }
 }

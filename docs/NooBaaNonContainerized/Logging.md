@@ -136,10 +136,11 @@ systemctl restart syslog-ng
         `Suppressed 6284127 messages from noobaa.service`
     
     solution :
-    * Edit /etc/systemd/journald.conf
+    * Edit `vi /etc/systemd/journald.conf`
     * add below configuration
         ```
         RateLimitInterval=0
         RateLimitBurst=0
         ```
+    * restart journal service - `systemctl restart systemd-journald`
     link : https://my.f5.com/manage/s/article/K70501143
