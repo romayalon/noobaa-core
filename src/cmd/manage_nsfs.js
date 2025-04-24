@@ -589,7 +589,7 @@ function filter_account(account, filters) {
                 return false;
             }
         } else if (key === 'access_key') {
-            if (account.access_keys && account.access_keys[0][key] !== val) {
+            if (!account.access_keys || account.access_keys.length === 0 || account.access_keys[0][key] !== val) {
                 return false;
             }
         } else if (account[key] !== val) { // We will never reach here if we will not add an appropriate field to the filter 

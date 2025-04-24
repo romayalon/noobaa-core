@@ -121,6 +121,7 @@ ThreadScope::restore_user()
 {
     if (_uid != orig_uid || _gid != orig_gid) {
         MUST_SYS(_mac_thread_setugid(KAUTH_UID_NONE, KAUTH_UID_NONE));
+        LOG("ROMY::restore_user MAC " << DVAL(orig_groups.size()) << DVAL(&orig_groups[0]));
         MUST_SYS(setgroups(orig_groups.size(), &orig_groups[0]));
     }
 }
