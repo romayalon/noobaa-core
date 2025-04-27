@@ -43,6 +43,7 @@ get_current_uid()
 const uid_t ThreadScope::orig_uid = getuid();
 const gid_t ThreadScope::orig_gid = getgid();
 const std::vector<gid_t> ThreadScope::orig_groups = get_process_groups();
+pthread_mutex_t cred_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static int
 get_supplemental_groups_by_uid(uid_t uid, std::vector<gid_t>& groups)
@@ -93,7 +94,10 @@ set_supplemental_groups(uid_t uid, gid_t gid, std::vector<gid_t>& groups) {
     groups.push_back(gid);
     std::swap(groups.front(), groups.back());
     LOG("ROMY::set_supplemental_groups DARWIN " << DVAL(uid)  DVAL(groups.size()) << DVAL(groups[0]) << DVAL(&groups[0]) << DVAL(ThreadScope::orig_groups.size()) << DVAL(ThreadScope::orig_groups[0]) << DVAL(&ThreadScope::orig_groups[0]));
-    MUST_SYS(setgroups(groups.size(), &groups[0]));
+    pthread_mutex_lock(&cred_lock);
+    int r = setgroups(groups.size(), &groups[0]);
+    pthread_mutex_unlock(&cred_lock);
+    if (r < 0) PANIC("setgroups FAILED: " << r);
 }
 
 
@@ -124,7 +128,10 @@ ThreadScope::restore_user()
     if (_uid != orig_uid || _gid != orig_gid) {
         MUST_SYS(_mac_thread_setugid(KAUTH_UID_NONE, KAUTH_UID_NONE));
         LOG("ROMY::restore_user MAC " << DVAL(orig_groups.size()) << DVAL(orig_groups[0]) << DVAL(&orig_groups[0]));
-        MUST_SYS(setgroups(orig_groups.size(), &orig_groups[0]));
+        pthread_mutex_lock(&cred_lock);
+        int r = setgroups(orig_groups.size(), &orig_groups[0]);
+        pthread_mutex_unlock(&cred_lock);
+        if (r < 0) PANIC("setgroups FAILED: " << r);
     }
 }
 

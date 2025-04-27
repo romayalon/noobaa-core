@@ -29,6 +29,7 @@ const uid_t ThreadScope::orig_uid = getuid();
 const gid_t ThreadScope::orig_gid = getgid();
 
 const std::vector<gid_t> ThreadScope::orig_groups = get_process_groups();
+pthread_mutex_t cred_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static int
 get_supplemental_groups_by_uid(uid_t uid, std::vector<gid_t>& groups)
@@ -68,15 +69,19 @@ set_supplemental_groups(uid_t uid, std::vector<gid_t>& groups) {
         const char* is_enabled = getenv("NSFS_ENABLE_DYNAMIC_SUPPLEMENTAL_GROUPS");
         if ((is_enabled == NULL) || (strcmp(is_enabled, "true") != 0) || get_supplemental_groups_by_uid(uid, groups) < 0) {
             //couldn't get supplemental groups dynamically. set it to be an empty set
-            MUST_SYS(syscall(SYS_setgroups, 0, NULL));
+            pthread_mutex_lock(&cred_lock);
+            int r = syscall(SYS_setgroups, 0, NULL);
+            pthread_mutex_unlock(&cred_lock);
+            if (r < 0) PANIC("SYS_setgroups FAILED: " << r);
             return;
         }
     }
-    // ROMY
-    // groups.push_back(gid);
-    // std::swap(groups.front(), groups.back());
     LOG("ROMY::set_supplemental_groups LINUX " << DVAL(uid)  DVAL(groups.size()) << DVAL(groups[0]) << DVAL(&groups[0]) << DVAL(ThreadScope::orig_groups.size()) << DVAL(ThreadScope::orig_groups[0]) << DVAL(&ThreadScope::orig_groups[0]));
-    MUST_SYS(syscall(SYS_setgroups, groups.size(), &groups[0]));
+    pthread_mutex_lock(&cred_lock);
+    int r = syscall(SYS_setgroups, groups.size(), &groups[0]);
+    pthread_mutex_unlock(&cred_lock);
+    if (r < 0) PANIC("SYS_setgroups FAILED: " << r);
+
 }
 
 /**
@@ -106,7 +111,10 @@ ThreadScope::restore_user()
         MUST_SYS(syscall(SYS_setresuid, -1, orig_uid, -1));
         MUST_SYS(syscall(SYS_setresgid, -1, orig_gid, -1));
         LOG("ROMY::restore_user LINUX " << DVAL(orig_groups.size()) << DVAL(orig_groups[0]) << DVAL(&orig_groups[0]));
-        MUST_SYS(syscall(SYS_setgroups, orig_groups.size(), &orig_groups[0]));
+        pthread_mutex_lock(&cred_lock);
+        int r = syscall(SYS_setgroups, orig_groups.size(), &orig_groups[0]);
+        pthread_mutex_unlock(&cred_lock);
+        if (r < 0) PANIC("SYS_setgroups FAILED: " << r);
     }
 }
 

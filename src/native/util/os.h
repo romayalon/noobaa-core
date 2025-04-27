@@ -12,6 +12,7 @@ namespace noobaa
 
 pid_t get_current_tid();
 uid_t get_current_uid();
+extern pthread_mutex_t cred_lock;
 
 /**
  * ThreadScope should be created on stack in a thread.
