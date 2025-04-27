@@ -73,8 +73,8 @@ set_supplemental_groups(uid_t uid, std::vector<gid_t>& groups) {
         }
     }
     // ROMY
-    // groups.push_back(gid);
-    // std::swap(groups.front(), groups.back());
+    groups.push_back(gid);
+    std::swap(groups.front(), groups.back());
     LOG("ROMY::set_supplemental_groups LINUX " << DVAL(uid)  DVAL(groups.size()) << DVAL(groups[0]) << DVAL(&groups[0]) << DVAL(ThreadScope::orig_groups.size()) << DVAL(ThreadScope::orig_groups[0]) << DVAL(&ThreadScope::orig_groups[0]));
     MUST_SYS(syscall(SYS_setgroups, groups.size(), &groups[0]));
 }
