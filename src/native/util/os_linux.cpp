@@ -113,6 +113,7 @@ ThreadScope::restore_user()
 void
 ThreadScope::get_thread_capabilities() {
     cap_t caps = cap_get_proc();
+    char *caps_text;
 
     if(caps == NULL) {
         LOG("ThreadScope::get_thread_capabilities - cap_get_proc failed");
