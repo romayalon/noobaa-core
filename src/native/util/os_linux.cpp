@@ -62,7 +62,7 @@ get_supplemental_groups_by_uid(uid_t uid, std::vector<gid_t>& groups)
  *    set it to be an empty set
  */
 static void
-set_supplemental_groups(uid_t uid,  gid_t gid, std::vector<gid_t>& groups) {
+set_supplemental_groups(uid_t uid, std::vector<gid_t>& groups) {
     //first check if groups were defined in the account configuration
     if (groups.empty()) {
         const char* is_enabled = getenv("NSFS_ENABLE_DYNAMIC_SUPPLEMENTAL_GROUPS");
@@ -73,8 +73,8 @@ set_supplemental_groups(uid_t uid,  gid_t gid, std::vector<gid_t>& groups) {
         }
     }
     // ROMY
-    groups.push_back(gid);
-    std::swap(groups.front(), groups.back());
+    // groups.push_back(gid);
+    // std::swap(groups.front(), groups.back());
     LOG("ROMY::set_supplemental_groups LINUX " << DVAL(uid)  DVAL(groups.size()) << DVAL(groups[0]) << DVAL(&groups[0]) << DVAL(ThreadScope::orig_groups.size()) << DVAL(ThreadScope::orig_groups[0]) << DVAL(&ThreadScope::orig_groups[0]));
     MUST_SYS(syscall(SYS_setgroups, groups.size(), &groups[0]));
 }
@@ -88,7 +88,7 @@ void
 ThreadScope::change_user()
 {
     if (_uid != orig_uid || _gid != orig_gid) {
-        set_supplemental_groups(_uid, _gid, _groups);
+        set_supplemental_groups(_uid, _groups);
         // must change gid first otherwise will fail on permission
         MUST_SYS(syscall(SYS_setresgid, -1, _gid, -1));
         MUST_SYS(syscall(SYS_setresuid, -1, _uid, -1));
@@ -110,7 +110,7 @@ ThreadScope::restore_user()
     }
 }
 
-int
+void
 ThreadScope::get_thread_capabilities() {
     cap_t caps = cap_get_proc();
 
