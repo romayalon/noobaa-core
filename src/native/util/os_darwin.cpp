@@ -86,11 +86,13 @@ set_supplemental_groups(uid_t uid, gid_t gid, std::vector<gid_t>& groups) {
             return;
         }
     }
-    /*accourding to BSD Manual https://man.freebsd.org/cgi/man.cgi?query=setgroups
-    which darwin is occasionally compliant to setgroups changes the effective gid according to
+    /*according to BSD Manual https://man.freebsd.org/cgi/man.cgi?query=setgroups
+    which darwin is occasionally compliant to, setgroups changes the effective gid according to
     the first element on the list. add the effective gid as the first element to prevent issues*/
+    // ROMY
     groups.push_back(gid);
     std::swap(groups.front(), groups.back());
+    LOG("ROMY::set_supplemental_groups DARWIN " << DVAL(uid)  DVAL(groups.size()) << DVAL(groups[0]) << DVAL(&groups[0]) << DVAL(ThreadScope::orig_groups.size()) << DVAL(ThreadScope::orig_groups[0]) << DVAL(&ThreadScope::orig_groups[0]));
     MUST_SYS(setgroups(groups.size(), &groups[0]));
 }
 
