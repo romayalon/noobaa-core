@@ -42,7 +42,7 @@ public:
     }
 
     int add_thread_capabilities();
-    int get_thread_capabilities();
+    void get_thread_capabilities();
     
     const static uid_t orig_uid;
     const static gid_t orig_gid;

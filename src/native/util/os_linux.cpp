@@ -116,7 +116,7 @@ ThreadScope::get_thread_capabilities() {
 
     if(caps == NULL) {
         LOG("ThreadScope::get_thread_capabilities - cap_get_proc failed");
-        return -1;
+        return;
     }
     LOG("ThreadScope::get_thread_capabilities - add_thread_capabilities " << DVAL(caps));
     cap_free(caps);

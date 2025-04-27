@@ -136,12 +136,11 @@ ThreadScope::add_thread_capabilities()
     return -1;
 }
 
-int
+void
 ThreadScope::get_thread_capabilities()
 {
     //set capabilities not used in darwin
     LOG("function get_thread_capabilities is unsupported in darwin");
-    return -1;
 }
 
 
