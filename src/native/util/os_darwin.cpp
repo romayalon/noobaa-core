@@ -136,6 +136,15 @@ ThreadScope::add_thread_capabilities()
     return -1;
 }
 
+int
+ThreadScope::get_thread_capabilities()
+{
+    //set capabilities not used in darwin
+    LOG("function get_thread_capabilities is unsupported in darwin");
+    return -1;
+}
+
+
 std::vector<gid_t>
 ThreadScope::get_process_groups() {
     std::vector<gid_t> groups(NGROUPS_MAX);

@@ -670,6 +670,8 @@ struct FSWorker : public Napi::AsyncWorker
         const std::string supplemental_groups = stringfy_vector(_supplemental_groups);
         DBG0("FS::FSWorker::Execute: " << _desc << DVAL(_uid) << DVAL(_gid) << DVAL(_backend) << DVAL(supplemental_groups));
         ThreadScope tx;
+        tx.get_thread_capabilities();
+
         tx.set_user(_uid, _gid, _supplemental_groups);
         std::string new_supplemental_groups = get_groups_as_string();
         DBG0("FS::FSWorker::Execute: " << _desc << DVAL(_uid) << DVAL(_gid) << DVAL(geteuid()) << DVAL(getegid()) << DVAL(getuid()) << DVAL(getgid()) << DVAL(new_supplemental_groups));

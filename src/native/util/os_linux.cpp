@@ -111,8 +111,22 @@ ThreadScope::restore_user()
 }
 
 int
+ThreadScope::get_thread_capabilities() {
+    cap_t caps = cap_get_proc();
+
+    if(caps == NULL) {
+        LOG("ThreadScope::get_thread_capabilities - cap_get_proc failed");
+        return -1;
+    }
+    LOG("ThreadScope::get_thread_capabilities - add_thread_capabilities " << DVAL(caps));
+    cap_free(caps);
+}
+
+int
 ThreadScope::add_thread_capabilities() {
     cap_t caps = cap_get_proc();
+    LOG("ThreadScope::set_thread_capabilities - add_thread_capabilities " << DVAL(caps));
+
     cap_flag_value_t cap_flag_value;
     if(caps == NULL) {
         LOG("ThreadScope::set_thread_capabilities - cap_get_proc failed");
