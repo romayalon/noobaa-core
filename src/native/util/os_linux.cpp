@@ -118,7 +118,15 @@ ThreadScope::get_thread_capabilities() {
         LOG("ThreadScope::get_thread_capabilities - cap_get_proc failed");
         return;
     }
-    LOG("ThreadScope::get_thread_capabilities - add_thread_capabilities " << DVAL(caps));
+    caps_text = cap_to_text(caps, NULL);
+    if (caps_text == NULL) {
+        LOG("ThreadScope::get_thread_capabilities - cap_to_text failed");
+        cap_free(caps);
+        return;
+    }
+
+    LOG("ThreadScope::get_thread_capabilities - caps_text " << DVAL(caps_text));
+    cap_free(caps_text);
     cap_free(caps);
 }
 
