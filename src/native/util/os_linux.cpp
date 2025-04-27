@@ -72,6 +72,7 @@ set_supplemental_groups(uid_t uid, std::vector<gid_t>& groups) {
             return;
         }
     }
+    LOG("ROMY::set_supplemental_groups LINUX " <<  << DVAL(uid)  DVAL(groups.size()) << DVAL(groups[0]) << DVAL(&groups[0]) << DVAL(orig_groups.size()) << DVAL(orig_groups[0]) << DVAL(&orig_groups[0]));
     MUST_SYS(syscall(SYS_setgroups, groups.size(), &groups[0]));
 }
 
