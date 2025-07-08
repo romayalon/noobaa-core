@@ -4,6 +4,7 @@
 2. [General Information](#general-information)
 3. [AWS S3 Lifecycle Policy reminder](#aws-s3-lifecycle-policy-reminder)
 4. [Supported Lifecycle Policy Rules](#noobaa-nc-supported-lifecycle-policy-rules)
+5. [Lifecycle policy configuration instructions](#lifecycle-policy-configuration-instructions)
 
 
 ## Introduction
@@ -59,9 +60,62 @@ AWS S3 supports the following elements that describe lifecycle actions -
 
 6. **NonCurrentVersionTransition**
 
+For more info, see - 
+* [AWS S3 object lifecycle mgmt documentation](https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lifecycle-mgmt.html)
+* [lifecycle introduction rules](https://docs.aws.amazon.com/AmazonS3/latest/userguide/intro-lifecycle-rules.html) 
+
 ## NooBaa NC Supported Lifecycle Policy Rules
 The following list contains the supported lifecycle policy rules in NooBaa Non Containerized - 
 1. Filter
 2. Expiration
 3. NoncurrentVersionExpiration
 4. AbortIncompleteMultipartUpload
+
+## Lifecycle policy configuration instructions
+
+### Prerequisites
+
+- NooBaa deployed and running
+- [AWS CLI](https://docs.aws.amazon.com/cli/latest/reference/s3api/) installed. 
+- An account already created.
+- A target bucket already created by the account of the prerequisite above.
+
+
+1. Create a lifecycle policy file - 
+This example will delete all objects older than 30 days.
+
+```bash
+cat policy.json
+{
+  "Rules": [
+    {
+      "ID": "expire-old-objects",
+      "Filter": {
+        "Prefix": ""
+      },
+      "Status": "Enabled",
+      "Expiration": {
+        "Days": 30
+      }
+    }
+  ]
+}
+```
+
+2. Apply the lifecycle policy - 
+```bash
+AWS_ACCESS_KEY_ID=<access_key> AWS_SECRET_ACCESS_KEY=<secret_key> aws s3api put-bucket-lifecycle-configuration \
+  --bucket <your-bucket-name> \
+  --lifecycle-configuration file://lifecycle.json \
+  --endpoint-url <noobaa-endpoint>
+```
+
+3. Verify the lifecycle policy - 
+```bash
+AWS_ACCESS_KEY_ID=<access_key> AWS_SECRET_ACCESS_KEY=<secret_key> aws s3api get-bucket-lifecycle-configuration \
+  --bucket <your-bucket-name> \
+  --endpoint-url <noobaa-endpoint>
+```
+
+For more info, see - 
+[S3 api CLI put bucket lifecycle configuration](https://docs.aws.amazon.com/cli/latest/reference/s3api/put-bucket-lifecycle-configuration.html)
