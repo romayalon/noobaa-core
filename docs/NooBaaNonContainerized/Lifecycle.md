@@ -119,3 +119,29 @@ AWS_ACCESS_KEY_ID=<access_key> AWS_SECRET_ACCESS_KEY=<secret_key> aws s3api get-
 
 For more info, see - 
 [S3 api CLI put bucket lifecycle configuration](https://docs.aws.amazon.com/cli/latest/reference/s3api/put-bucket-lifecycle-configuration.html)
+
+## Lifecycle CLI Worker
+The NooBaa NC Lifecycle worker is a noobaa-cli command that is executed manually or by a nightly cron job.
+
+Lifecycle worker configuration - 
+```js
+NC_LIFECYCLE_LOGS_DIR = '/var/log/noobaa/lifecycle';
+NC_LIFECYCLE_TIMEOUT_MS = 8 * 60 * 60 * 1000;
+NC_LIFECYCLE_RUN_TIME = '00:00';
+NC_LIFECYCLE_RUN_DELAY_LIMIT_MINS = 2;
+config.NC_LIFECYCLE_TZ = 'LOCAL';
+```
+
+- **NC_LIFECYCLE_RUN_TIME** 
+The NooBaa NC Lifecycle worker is a noobaa-cli command that is expected to run at 00:00 by default, with a NC_LIFECYCLE_RUN_DELAY_LIMIT_MINS delay - by default 2 minutes. A nightly cron job that should run the CLI command nightly should be external to NooBaa (CES or other callers). Notice that NC_LIFECYCLE_RUN_TIME should be the same timezone as specified in NC_LIFECYCLE_TZ.
+
+- **NC_LIFECYCLE_TIMEOUT_MS** 
+The lifecycle worker has a timeout of NC_LIFECYCLE_TIMEOUT_MS = 8 hours by default.
+
+- **NC_LIFECYCLE_LOGS_DIR** 
+Each lifecycle run ends with a report that is written to NC_LIFECYCLE_LOGS_DIR which is located in `/var/log/noobaa/lifecycle` by default.
+When NooBaa is deployed on GPFS, NooBaa offloads the deletion candidates search to the file system but translating lifecycle policies to GPFS ILM policies.
+During that process ILM policies and ILM candidates files will be created under NC_LIFECYCLE_LOGS_DIR. 
+
+
+## GPFS optimization
