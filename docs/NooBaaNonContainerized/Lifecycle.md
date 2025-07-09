@@ -265,12 +265,14 @@ sudo cat /var/log/noobaa/lifecycle/lifecycle_run_1750145866911.json | jq
 As mentioned above, GPFS optimization is enabled on expiration rules only. In the future, we would like to optimize more flows like the NonCurrentExpiration (Days) and AbortIncompleteMultipartUploads.
 During the lifecycle worker run, NooBaa will translate expiration rules to GPFS ILM policies and will create a single lifecycle file per mount point, this is done in order to optimize GPFS files search.
 After creating the GPFS ILM policies, the lifecycle worker will apply the policies and GPFS will create candidates files per rule.
-Example - 
-In the below example, there are 3 buckets in NooBaa that configured with a lifecycle policy that contains expiration element.
-bucket1 - bucket path is under `/mnt/gpfs0/`, lifecycle policy contains 2 rules.
-bucket2 - bucket path is under `/mnt/gpfs0/`, lifecycle policy contains 1 rule.
-bucket3 - bucket path is under `/mnt/cesSharedRoot/`, lifecycle policy contains 1 rule.
 
+### Example - 
+In the below example, there are 3 buckets in NooBaa that configured with a lifecycle policy that contains expiration element.
+- bucket1 - bucket path is under `/mnt/gpfs0/`, lifecycle policy contains 2 rules.
+- bucket2 - bucket path is under `/mnt/gpfs0/`, lifecycle policy contains 1 rule.
+- bucket3 - bucket path is under `/mnt/cesSharedRoot/`, lifecycle policy contains 1 rule.
+
+#### Policy and candidates files structure - 
 ```
 tree /var/log/noobaa/lifecycle/
 /var/log/noobaa/lifecycle/
