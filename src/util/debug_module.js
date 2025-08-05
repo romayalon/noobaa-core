@@ -610,7 +610,9 @@ if (console_wrapper) {
 function set_log_config() {
     const dbg_native_conf = debug_config.get_debug_config(process.env.NOOBAA_LOG_LEVEL);
     nb_native().fs.set_debug_level(dbg_native_conf.level);
-    nb_native().fs.set_log_config(config.LOG_TO_STDERR_ENABLED, config.LOG_TO_SYSLOG_ENABLED);
+    nb_native().fs.set_log_config(config.LOG_TO_STDERR_ENABLED,
+        config.LOG_TO_SYSLOG_ENABLED,
+        config.DEBUG_FACILITY);
 }
 
 config.event_emitter.on("config_updated", set_log_config);

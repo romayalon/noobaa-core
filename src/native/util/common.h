@@ -18,7 +18,7 @@
 
 #include "backtrace.h"
 #include "os.h"
-#include "syslog.h"
+
 
 namespace noobaa
 {
@@ -35,18 +35,20 @@ namespace noobaa
 
 extern bool LOG_TO_STDERR_ENABLED;
 extern bool LOG_TO_SYSLOG_ENABLED;
+extern std::string SYSLOG_DEBUG_FACILITY;
 
 #define STD_LOG(x)                                      \
     do {                                                \
         std::cerr << x << std::endl;                    \
     } while (0) 
 
-#define SYS_LOG(x)                                      \
-    do {                                                \
-        const char* log_msg = x.c_str();                \
-        int facility = LOG_LOCAL0;                      \
-        int priority = 5;                               \
-        ::syslog(priority | facility, "%s", log_msg);   \
+#define SYS_LOG(x)                                          \
+    do {                                                    \
+        const char* log_msg = x.c_str();                    \
+        std::string facility_str = LOG_LOCAL0;              \
+        int facility = _convert_facility(facility_str);     \
+        int priority = 5;                                   \
+        ::syslog(priority | facility, "%s", log_msg);       \
     } while (0)
 
 #define LOG(x)                                          \

@@ -11,6 +11,7 @@ namespace noobaa
 static void _syslog(const Napi::CallbackInfo& info);
 static void _openlog(const Napi::CallbackInfo& info);
 static void _closelog(const Napi::CallbackInfo& info);
+static int _convert_facility(const std::string& facility_str);
 
 // openlog requires ident to remain allocated until closelog is called.
 // since we pass the string data() to openlog we must not modify this string
@@ -23,6 +24,7 @@ syslog_napi(Napi::Env env, Napi::Object exports)
     exports["syslog"] = Napi::Function::New(env, _syslog);
     exports["openlog"] = Napi::Function::New(env, _openlog);
     exports["closelog"] = Napi::Function::New(env, _closelog);
+    exports["convert_facility"] = Napi::Function::New(env, _convert_facility);
 }
 
 static void
@@ -34,19 +36,28 @@ _syslog(const Napi::CallbackInfo& info)
     int facility = LOG_LOCAL0;
     if (info.Length() == 3) {
         std::string facility_str = info[2].As<Napi::String>().Utf8Value();
-        if (facility_str == "LOG_LOCAL0") {
-            facility = LOG_LOCAL0;
-        } else if (facility_str == "LOG_LOCAL1") {
-            facility = LOG_LOCAL1;
-        } else if (facility_str == "LOG_LOCAL2") {
-            facility = LOG_LOCAL2;
-        } else {
-            throw Napi::Error::New(info.Env(), "Syslog facility not supported");
-        }
+        facility = _convert_facility(facility_str);
     }
     ::syslog(priority | facility, "%s", message.data());
 #endif
 }
+
+static int 
+_convert_facility(const std::string& facility_str)
+{
+    int facility = LOG_LOCAL0; 
+    if (facility_str == "LOG_LOCAL0") {
+        facility = LOG_LOCAL0;
+    } else if (facility_str == "LOG_LOCAL1") {
+        facility = LOG_LOCAL1;
+    } else if (facility_str == "LOG_LOCAL2") {
+        facility = LOG_LOCAL2;
+    } else {
+        throw Napi::Error::New(info.Env(), "Syslog facility not supported");
+    }
+    return facility;
+}
+
 
 static void
 _openlog(const Napi::CallbackInfo& info)
