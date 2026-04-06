@@ -2271,6 +2271,12 @@ async function delete_vector_bucket(req) {
     });
 }
 
+async function read_vector_bucket(req) {
+    req.load_auth();
+    const vector_bucket = find_vector_bucket(req);
+    return get_vector_bucket_info(vector_bucket);
+}
+
 async function list_vector_objects(req, unsorted_system_collection, get_info_func) {
     if (!unsorted_system_collection) {
         return {
@@ -2362,7 +2368,6 @@ function find_vector_index(req, vector_bucket_name, vector_index_name) {
 
 function get_vector_bucket_info(vector_bucket) {
     const nsr = pool_server.get_namespace_resource_info(vector_bucket.namespace_resource.resource);
-
     const info = {
         name: vector_bucket.name,
         owner_account: get_owner_account_info(vector_bucket.owner_account),
@@ -2607,6 +2612,8 @@ exports.delete_public_access_block = delete_public_access_block;
 
 //vector buckets
 exports.create_vector_bucket = create_vector_bucket;
+exports.read_vector_bucket = read_vector_bucket;
+exports.get_vector_bucket = get_vector_bucket;
 exports.delete_vector_bucket = delete_vector_bucket;
 exports.list_vector_buckets = list_vector_buckets;
 
@@ -2616,10 +2623,7 @@ exports.get_vector_bucket_policy = get_vector_bucket_policy;
 exports.delete_vector_bucket_policy = delete_vector_bucket_policy;
 
 //vectors
-exports.create_vector_bucket = create_vector_bucket;
-exports.get_vector_bucket = get_vector_bucket;
-exports.delete_vector_bucket = delete_vector_bucket;
-exports.list_vector_buckets = list_vector_buckets;
+
 exports.create_vector_index = create_vector_index;
 exports.get_vector_index = get_vector_index;
 exports.list_vector_indices = list_vector_indices;

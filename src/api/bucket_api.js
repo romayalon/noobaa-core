@@ -1012,7 +1012,23 @@ module.exports = {
                 system: ['admin', 'user']
             }
         },
-
+        
+        read_vector_bucket: {
+            method: 'GET',
+            params: {
+                type: 'object',
+                required: ['vector_bucket_name'],
+                properties: {
+                    vector_bucket_name: { wrapper: SensitiveString },
+                }
+            },
+            reply: {
+                $ref: '#/definitions/vector_bucket_info'
+            },
+            auth: {
+                system: ['admin', 'user']
+            }
+        },
 
         delete_vector_bucket: {
             method: 'POST',
