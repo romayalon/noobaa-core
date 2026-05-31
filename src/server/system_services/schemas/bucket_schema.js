@@ -120,6 +120,19 @@ module.exports = {
             }
         },
 
+        archive_policy: {
+            type: 'object',
+            properties: {
+                deep_archive_resource: {
+                    type: 'object',
+                    properties: {
+                        resource: { objectid: true }, // namespace resource id
+                        path: { type: 'string' },
+                    }
+                },
+            }
+        },
+
         force_md5_etag: {
             type: 'boolean' // enable md5 calculation per bucket
         },

@@ -354,6 +354,9 @@ async function create_bucket(req) {
                 should_create_underlying_storage
             };
         }
+        if (req.rpc_params.archive_policy) {
+            bucket.archive_policy = resolve_archive_policy(req);
+        }
         if (req.rpc_params.bucket_claim) {
             // TODO: Should implement validity checks
             bucket.bucket_claim = req.rpc_params.bucket_claim;
@@ -882,6 +885,10 @@ function get_bucket_changes(req, update_request, bucket, tiering_policy) {
         get_bucket_changes_namespace(req, bucket, update_request, single_bucket_update);
     }
 
+    if (update_request.remove_archive_policy || !_.isUndefined(update_request.archive_policy)) {
+        get_bucket_changes_archive_policy(req, bucket, update_request, single_bucket_update, changes);
+    }
+
     if (update_request.new_name) {
         single_bucket_update.name = update_request.new_name;
     }
@@ -934,6 +941,7 @@ function get_bucket_changes_versioning(req, bucket, update_request, single_bucke
 function get_bucket_changes_namespace(req, bucket, update_request, single_bucket_update) {
     if (!bucket.namespace) throw new RpcError('CANNOT_CONVERT_BUCKET_TO_NAMESPACE_BUCKET');
     if (!update_request.namespace.read_resources.length) throw new RpcError('INVALID_READ_RESOURCES');
+    if (update_request.archive_policy) throw new RpcError('ARCHIVE_POLICY_NOT_SUPPORTED_FOR_NAMESPACE_BUCKETS');
 
     const read_resources = _.compact(update_request.namespace.read_resources
         .map(nsr => {
@@ -998,6 +1006,49 @@ function get_bucket_changes_quota(req, bucket, quota_config, single_bucket_updat
         single_bucket_update.quota = quota.get_config();
     }
     changes.events.push(quota_event);
+}
+
+/**
+ * get_bucket_changes_archive_policy applies an archive policy set or removal to a bucket update.
+ * When req.rpc_params.remove_archive_policy is true the policy is unset.
+ * Otherwise req.rpc_params.archive_policy is resolved and stored.
+ */
+function get_bucket_changes_archive_policy(req, bucket, update_request, single_bucket_update, changes) {
+    const archive_policy_event = {
+        event: 'bucket.archive_policy',
+        level: 'info',
+        system: req.system._id,
+        actor: req.account && req.account._id,
+        bucket: bucket._id
+    };
+    if (update_request.remove_archive_policy) {
+        single_bucket_update.$unset = { ...single_bucket_update.$unset, archive_policy: 1 };
+        archive_policy_event.desc = `Archive policy was removed from ${bucket.name.unwrap()} by ${req.account && req.account.email.unwrap()}`;
+    } else {
+        const new_archive_policy = resolve_archive_policy(req);
+        archive_policy_event.desc = `Archive policy was set on ${bucket.name.unwrap()} by ${req.account && req.account.email.unwrap()}`;
+        _.set(single_bucket_update, 'archive_policy', new_archive_policy);
+    }
+    changes.events.push(archive_policy_event);
+}
+
+/**
+ * Resolves an archive_policy from the API representation to the DB representation.
+ * deep_archive_resource is a namespace_resource_config {resource: name, path?} in the API,
+ * and a the equivalent namespace resource db config {resource: ObjectId, path?} in the DB.
+ * Throws INVALID_ARCHIVE_RESOURCE if the named namespace resource does not exist.
+ */
+function resolve_archive_policy(req) {
+    const archive_policy = req.rpc_params.archive_policy;
+    if (!archive_policy.deep_archive_resource) {
+        throw new RpcError('INVALID_ARCHIVE_POLICY', `Archive policy missing deep archive resource`);
+    }
+    const { resource: resource_name, path: resource_path } = archive_policy.deep_archive_resource;
+    const nsr = req.system.namespace_resources_by_name && req.system.namespace_resources_by_name[resource_name];
+    if (!nsr) {
+        throw new RpcError('INVALID_ARCHIVE_RESOURCE', `Namespace resource not found: ${resource_name}`);
+    }
+    return { deep_archive_resource: { resource: nsr._id, path: resource_path } };
 }
 
 /**
@@ -1624,6 +1675,12 @@ function get_bucket_info({
                 ({ resource: pool_server.get_namespace_resource_info(rs.resource).name, path: rs.path })
             ),
             should_create_underlying_storage: bucket.namespace.should_create_underlying_storage
+        } : undefined,
+        archive_policy: bucket.archive_policy ? {
+            deep_archive_resource: {
+                resource: pool_server.get_namespace_resource_info(bucket.archive_policy.deep_archive_resource.resource).name,
+                path: bucket.archive_policy.deep_archive_resource.path,
+            }
         } : undefined,
         tiering: tiering,
         tag: bucket.tag ? bucket.tag : '',
