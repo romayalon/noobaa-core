@@ -89,7 +89,8 @@ module.exports = {
                             'noobaa-db-pg-cluster-r',
                             'noobaa-syslog',
                             'iam',
-                            'vectors'
+                            'vectors',
+                            'admission-webhook-service'
                         ]
                     },
                     kind: {
@@ -100,7 +101,7 @@ module.exports = {
                     port: { $ref: 'common_api#/definitions/port' },
                     api: {
                         type: 'string',
-                        enum: ['mgmt', 's3', 'sts', 'md', 'bg', 'hosted_agents', 'metrics', 'postgres', 'syslog', 'iam', 'vectors']
+                        enum: ['mgmt', 's3', 'sts', 'md', 'bg', 'hosted_agents', 'metrics', 'postgres', 'syslog', 'iam', 'vectors', 'webhook']
                     },
                     secure: { type: 'boolean' },
                     weight: { type: 'integer' }
