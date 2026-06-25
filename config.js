@@ -1284,6 +1284,11 @@ config.VECTOR_INDEX_ROWS_REINDEX = 10000;
 config.DELETE_OBJECTS_BATCH_SIZE = 1000;
 
 
+//////////////////
+/// GLACIER API //
+//////////////////
+config.ENABLE_DBS3_EXTERNAL_CONN_CHECK = true;
+
 /////////////////////
 //                 //
 //    OVERRIDES    //

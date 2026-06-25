@@ -334,6 +334,8 @@ function create_endpoint_handler(server_type, init_request_sdk, { virtual_hosts,
                 const api = req.url.slice('/_/'.length);
                 if (api === 'version') {
                     return version_handler(req, res);
+                } else if (api === 'is_dbs3') {
+                    return is_dbs3_handler(req, res);
                 } else {
                     return internal_api_error(req, res, `Unknown API call ${api}`);
                 }
@@ -396,6 +398,21 @@ function version_handler(req, res) {
     res.setHeader('Content-Type', 'text/plain');
     res.setHeader('Content-Length', Buffer.byteLength(noobaa_package_version));
     res.end(noobaa_package_version);
+}
+
+/**
+ * is_dbs3_handler reports whether this endpoint is a Diamondback S3 service
+ * (glacier/archive capable). The noobaa-operator probes this at /_/is_dbs3
+ * before allowing archive namespace stores.
+ * @param {EndpointRequest} req
+ * @param {import('http').ServerResponse} res
+ */
+function is_dbs3_handler(req, res) {
+    const is_dbs3 = Boolean(config.NSFS_GLACIER_ENABLED) ? 'true' : 'false';
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'text/plain');
+    res.setHeader('Content-Length', Buffer.byteLength(is_dbs3));
+    res.end(is_dbs3);
 }
 
 /**

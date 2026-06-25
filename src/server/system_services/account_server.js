@@ -21,6 +21,8 @@ const { Durations, LogsQueryClient } = require('@azure/monitor-query-logs');
 const { ClientSecretCredential } = require("@azure/identity");
 const noobaa_s3_client = require('../../sdk/noobaa_s3_client/noobaa_s3_client');
 const account_util = require('./../../util/account_util');
+const http_utils = require('../../util/http_utils');
+const buffer_utils = require('../../util/buffer_utils');
 const iam_utils = require('../../endpoint/iam/iam_utils');
 const { IAM_ACTIONS, IAM_DEFAULT_PATH, ACCESS_KEY_STATUS_ENUM,
      MAX_TAGS, MAX_NUMBER_OF_IAM_ROLES, DEFAULT_MAX_SESSION_DURATION_SECS } = require('../../endpoint/iam/iam_constants');
@@ -921,12 +923,25 @@ async function check_aws_connection(params) {
         new Error('Operation timeout'), { code: 'OperationTimeout' }
     );
 
+    let dbs3_supported;
     try {
         await P.timeout(check_connection_timeout, s3.listBuckets({}), () => timeoutError);
-        return { status: 'SUCCESS' };
+        dbg.log1('check_aws_connection: listBuckets success');
+        if (params.archive && config.ENABLE_DBS3_EXTERNAL_CONN_CHECK) {
+            // api supported in 4.23+ only, add a configuration for disabling this check
+            // api won't be supported on dbs3 old systems
+            dbs3_supported = await P.timeout(check_connection_timeout, _check_dbs3_endpoint(params.endpoint), () => timeoutError);
+            if (dbs3_supported !== 'true') {
+                throw Object.assign(
+                    new Error(`Endpoint does not support Diamondback S3 deep archive (/_/is_dbs3 responded "${dbs3_supported}")`),
+                    { code: 'UnknownEndpoint' }
+                );
+            }
+            dbg.log1('check_aws_connection: _check_dbs3_endpoint success');
+        }
     } catch (err) {
         const error_code = err.Code || err.code;
-        dbg.warn(`got error on listBuckets with params`, _.omit(params, 'secret'),
+        dbg.warn(`got error on check_aws_connection with params`, _.omit(params, 'secret'),
             ` error: ${err}, code: ${error_code}, message: ${err.message}`
         );
         const status = aws_error_mapping[error_code] || 'UNKNOWN_FAILURE';
@@ -938,6 +953,22 @@ async function check_aws_connection(params) {
             }
         };
     }
+    return { status: 'SUCCESS' };
+
+}
+
+/**
+ * _check_dbs3_endpoint probes the /_/is_dbs3 API on the given S3-compatible
+ * endpoint to verify Diamondback S3 (deep-archive) support.
+ * Throws on failure — caller handles the error via aws_error_mapping.
+ * @param {string} endpoint
+ * @returns {Promise<string>}
+ */
+async function _check_dbs3_endpoint(endpoint) {
+    const probe_url = endpoint.replace(/\/+$/, '') + '/_/is_dbs3';
+    const res = await http_utils.http_get(probe_url, { rejectUnauthorized: false });
+    const body = (await buffer_utils.read_stream_join(res)).toString();
+    return body.trim();
 }
 
 function check_net_storage_connection(params) {

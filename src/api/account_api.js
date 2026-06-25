@@ -523,6 +523,9 @@ module.exports = {
                     },
                     ignore_name_already_exist: {
                         type: 'boolean'
+                    },
+                    archive: {
+                        type: 'boolean'
                     }
                 }
             },
