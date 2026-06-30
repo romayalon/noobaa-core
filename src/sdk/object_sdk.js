@@ -23,6 +23,7 @@ const NamespaceMerge = require('./namespace_merge');
 const NamespaceCache = require('./namespace_cache');
 const NamespaceMultipart = require('./namespace_multipart');
 const NamespaceNetStorage = require('./namespace_net_storage');
+const NamespaceDeepArchive = require('./namespace_deep_archive');
 const BucketSpaceNB = require('./bucketspace_nb');
 const { RpcError } = require('../rpc');
 const noobaa_s3_client = require('../sdk/noobaa_s3_client/noobaa_s3_client');
@@ -420,6 +421,14 @@ class ObjectSDK {
         const time = Date.now();
         dbg.log1('_load_bucket_namespace', bucket);
         try {
+            if (bucket.archive_policy) {
+                return {
+                    ns: this._setup_deep_archive_namespace(bucket),
+                    bucket,
+                    valid_until: time + config.OBJECT_SDK_BUCKET_CACHE_EXPIRY_MS,
+                };
+            }
+
             if (bucket.namespace) {
 
                 if (bucket.namespace.caching) {
@@ -504,6 +513,22 @@ class ObjectSDK {
                 ))
             },
             active_triggers: bucket.active_triggers
+        });
+    }
+
+    /**
+     * Creates a NamespaceDeepArchive wrapping an archive S3 namespace and NB metadata.
+     * @returns {nb.Namespace}
+     */
+    _setup_deep_archive_namespace(bucket) {
+        const archive_resource = bucket.archive_policy.deep_archive_resource;
+        const archive_ns = this._setup_single_namespace(archive_resource);
+        const namespace_nb = new NamespaceNB();
+        namespace_nb.set_triggers_for_bucket(bucket.name.unwrap(), bucket.active_triggers);
+        return new NamespaceDeepArchive({
+            archive_ns,
+            namespace_nb,
+            stats: this.stats,
         });
     }
 
