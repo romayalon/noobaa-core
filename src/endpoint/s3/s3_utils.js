@@ -23,6 +23,9 @@ const STORAGE_CLASS_GLACIER_IR = 'GLACIER_IR'; // "S3 Glacier Instant Retrieval"
 /** @type {nb.StorageClass} */
 const STORAGE_CLASS_DEEP_ARCHIVE = 'DEEP_ARCHIVE'; // "S3 Deep Archive Storage Class"
 
+/** Prefix for temporary restored copies of deep-archive objects (internal to NooBaa). */
+const RESTORED_OBJECTS_DIR = 'restored_objects/';
+
 const DEFAULT_S3_USER = Object.freeze({
     ID: '123',
     DisplayName: 'NooBaa'
@@ -855,6 +858,7 @@ exports.STORAGE_CLASS_STANDARD = STORAGE_CLASS_STANDARD;
 exports.STORAGE_CLASS_GLACIER = STORAGE_CLASS_GLACIER;
 exports.STORAGE_CLASS_GLACIER_IR = STORAGE_CLASS_GLACIER_IR;
 exports.STORAGE_CLASS_DEEP_ARCHIVE = STORAGE_CLASS_DEEP_ARCHIVE;
+exports.RESTORED_OBJECTS_DIR = RESTORED_OBJECTS_DIR;
 exports.DEFAULT_S3_USER = DEFAULT_S3_USER;
 exports.DEFAULT_OBJECT_ACL = DEFAULT_OBJECT_ACL;
 exports.decode_chunked_upload = decode_chunked_upload;

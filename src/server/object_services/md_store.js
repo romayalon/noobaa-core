@@ -26,6 +26,7 @@ const data_chunk_indexes = require('./schemas/data_chunk_indexes');
 const data_block_schema = require('./schemas/data_block_schema');
 const data_block_indexes = require('./schemas/data_block_indexes');
 const config = require('../../../config');
+const s3_utils = require('../../endpoint/s3/s3_utils');
 
 
 // const sql_or_conditions = (...conditions) => conditions.filter(Boolean).join(' OR ');
@@ -1035,8 +1036,12 @@ class MDStore {
     }
 
     _build_list_key_query_from_prefix(prefix) {
-        // filter keys starting with prefix
-        return prefix ? { key_query: new RegExp('^' + _.escapeRegExp(prefix)) } : {};
+        // Always exclude internal restored_objects/ copies (same idea as .noobaa_blob_blocks).
+        const key_query = { $not: new RegExp('^' + _.escapeRegExp(s3_utils.RESTORED_OBJECTS_DIR)) };
+        if (prefix) {
+            key_query.$regex = new RegExp('^' + _.escapeRegExp(prefix));
+        }
+        return { key_query };
     }
 
     _build_list_key_query_from_markers(prefix, delimiter, key_marker, upload_started_marker, version_seq_marker) {
@@ -1046,7 +1051,10 @@ class MDStore {
         if (!key_marker.startsWith(prefix)) {
             throw new Error(`BAD KEY MARKER ${key_marker} FOR PREFIX ${prefix}`);
         }
-        const key_query = { $gt: key_marker };
+        const key_query = {
+            $gt: key_marker,
+            $not: new RegExp('^' + _.escapeRegExp(s3_utils.RESTORED_OBJECTS_DIR)),
+        };
 
         // filter keys starting with prefix
         let regexp_text = '^' + _.escapeRegExp(prefix);
