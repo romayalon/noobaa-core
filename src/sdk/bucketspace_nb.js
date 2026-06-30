@@ -7,6 +7,7 @@ const nb_native = require('../util/nb_native');
 const dbg = require('../util/debug_module')(__filename);
 const path = require('path');
 const config = require('../../config.js');
+const s3_utils = require('../endpoint/s3/s3_utils');
 const NamespaceFS = require('./namespace_fs');
 
 /**
@@ -48,7 +49,15 @@ class BucketSpaceNB {
     }
 
     async read_bucket(params) {
-        return this.rpc_client.bucket.read_bucket(params);
+        const bucket_info = await this.rpc_client.bucket.read_bucket(params);
+        if (bucket_info.archive_policy) {
+            bucket_info.supported_storage_classes = [
+                s3_utils.STORAGE_CLASS_STANDARD,
+                s3_utils.STORAGE_CLASS_GLACIER,
+                s3_utils.STORAGE_CLASS_DEEP_ARCHIVE,
+            ];
+        }
+        return bucket_info;
     }
 
     async create_bucket(params, object_sdk) {

@@ -981,6 +981,7 @@ class BucketSpaceFS extends BucketSpaceSimpleFS {
             storage_classes.push(s3_utils.STORAGE_CLASS_GLACIER);
         }
 
+        // ROMY - why not also DEEP_ARCHIVE? - we can add it if needed, but for now we will keep it simple
         return storage_classes;
     }
 
