@@ -36,7 +36,12 @@ const { ChunkAPI } = require('../../sdk/map_api_types');
 const config = require('../../../config');
 const CONSTANTS = require('../../common/constants');
 const Quota = require('../system_services/objects/quota');
-const { STORAGE_CLASS_STANDARD } = require('../../endpoint/s3/s3_utils');
+const {
+    STORAGE_CLASS_STANDARD,
+    RESTORE_STATUS_CAN_RESTORE,
+    RESTORE_STATUS_ONGOING,
+    RESTORE_STATUS_RESTORED,
+} = require('../../endpoint/s3/s3_utils');
 
 // short living cache for objects
 // the purpose is to reduce hitting the DB many many times per second during upload/download.
@@ -1062,7 +1067,7 @@ function _check_encryption_permissions(src_enc, req_enc) {
 async function update_object_md(req) {
     dbg.log1('object_server.update object md', req.rpc_params);
     throw_if_maintenance(req);
-    const set_updates = _.pick(req.rpc_params, 'content_type', 'xattr', 'cache_last_valid_time', 'last_modified_time');
+    const set_updates = _.pick(req.rpc_params, 'content_type', 'xattr', 'cache_last_valid_time', 'last_modified_time', 'restore_status');
     if (set_updates.xattr) {
         set_updates.xattr = _.mapKeys(set_updates.xattr, (v, k) => k.replace(/\./g, '@'));
     }
@@ -1071,6 +1076,12 @@ async function update_object_md(req) {
     }
     if (set_updates.last_modified_time) {
         set_updates.last_modified_time = new Date(set_updates.last_modified_time);
+    }
+    if (set_updates.restore_status && set_updates.restore_status.expiry_time) {
+        set_updates.restore_status = {
+            ...set_updates.restore_status,
+            expiry_time: new Date(set_updates.restore_status.expiry_time),
+        };
     }
     const obj = await find_object_md(req);
     await MDStore.instance().update_object_by_id(obj._id, set_updates);
@@ -1771,6 +1782,17 @@ function get_object_info(md, options = {}) {
         object_owner: _get_object_owner(),
         transition_status: md.transition_status || undefined,
         data_expired: md.data_expired ? md.data_expired.getTime() : undefined,
+        restore_status: md.restore_status ? (() => {
+            const { ongoing, expiry_time } = md.restore_status;
+            /** @type {nb.RestoreState} */
+            const state = ongoing ? RESTORE_STATUS_ONGOING :
+                (expiry_time && expiry_time > new Date() ? RESTORE_STATUS_RESTORED : RESTORE_STATUS_CAN_RESTORE);
+            return {
+                state,
+                ongoing: ongoing || false,
+                expiry_time: expiry_time ? expiry_time.getTime() : undefined,
+            };
+        })() : undefined,
     };
 }
 

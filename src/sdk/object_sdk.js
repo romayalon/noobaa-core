@@ -23,7 +23,10 @@ const NamespaceMerge = require('./namespace_merge');
 const NamespaceCache = require('./namespace_cache');
 const NamespaceMultipart = require('./namespace_multipart');
 const NamespaceNetStorage = require('./namespace_net_storage');
+const NamespaceDeepArchive = require('./namespace_deep_archive');
+const NamespaceMultiStorageClass = require('./namespace_multi_storage_class');
 const BucketSpaceNB = require('./bucketspace_nb');
+const s3_utils = require('../endpoint/s3/s3_utils');
 const { RpcError } = require('../rpc');
 const noobaa_s3_client = require('../sdk/noobaa_s3_client/noobaa_s3_client');
 
@@ -425,6 +428,14 @@ class ObjectSDK {
         const time = Date.now();
         dbg.log1('_load_bucket_namespace', bucket);
         try {
+            if (bucket.archive_policy) {
+                return {
+                    ns: this._setup_multi_storage_class_namespace(bucket),
+                    bucket,
+                    valid_until: time + config.OBJECT_SDK_BUCKET_CACHE_EXPIRY_MS,
+                };
+            }
+
             if (bucket.namespace) {
 
                 if (bucket.namespace.caching) {
@@ -509,6 +520,29 @@ class ObjectSDK {
                 ))
             },
             active_triggers: bucket.active_triggers
+        });
+    }
+
+    /**
+     * Builds a NamespaceMultiStorageClass router for buckets with an archive_policy.
+     * STANDARD → NamespaceNB; DEEP_ARCHIVE / GLACIER → NamespaceDeepArchive.
+     * Additional storage classes can be registered in the same map later.
+     * @returns {nb.Namespace}
+     */
+    _setup_multi_storage_class_namespace(bucket) {
+        const namespace_nb = new NamespaceNB();
+        namespace_nb.set_triggers_for_bucket(bucket.name.unwrap(), bucket.active_triggers);
+        const deep_archive_ns = new NamespaceDeepArchive({
+            deep_archive_ns: this._setup_single_namespace(bucket.archive_policy.deep_archive_resource),
+            namespace_nb,
+            stats: this.stats,
+        });
+        return new NamespaceMultiStorageClass({
+            namespaces: {
+                [s3_utils.STORAGE_CLASS_STANDARD]: namespace_nb,
+                [s3_utils.STORAGE_CLASS_DEEP_ARCHIVE]: deep_archive_ns,
+                [s3_utils.STORAGE_CLASS_GLACIER]: deep_archive_ns,
+            },
         });
     }
 

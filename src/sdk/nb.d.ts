@@ -437,6 +437,7 @@ interface ObjectMD {
     lock_settings: { retention: { mode: string; retain_until_date: Date; }, legal_hold: { status: string } };
     transition_status?: string;
     data_expired?: Date;
+    restore_status?: { ongoing?: boolean; expiry_time?: Date; };
 }
 
 interface ObjectOwner {

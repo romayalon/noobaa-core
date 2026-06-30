@@ -23,6 +23,16 @@ const STORAGE_CLASS_GLACIER_IR = 'GLACIER_IR'; // "S3 Glacier Instant Retrieval"
 /** @type {nb.StorageClass} */
 const STORAGE_CLASS_DEEP_ARCHIVE = 'DEEP_ARCHIVE'; // "S3 Deep Archive Storage Class"
 
+/** Prefix for temporary restored copies of deep-archive objects (internal to NooBaa). */
+const RESTORED_OBJECTS_DIR = 'restored_objects/';
+
+/** @type {nb.RestoreState} */
+const RESTORE_STATUS_CAN_RESTORE = 'CAN_RESTORE';
+/** @type {nb.RestoreState} */
+const RESTORE_STATUS_ONGOING = 'ONGOING';
+/** @type {nb.RestoreState} */
+const RESTORE_STATUS_RESTORED = 'RESTORED';
+
 const DEFAULT_S3_USER = Object.freeze({
     ID: '123',
     DisplayName: 'NooBaa'
@@ -855,6 +865,10 @@ exports.STORAGE_CLASS_STANDARD = STORAGE_CLASS_STANDARD;
 exports.STORAGE_CLASS_GLACIER = STORAGE_CLASS_GLACIER;
 exports.STORAGE_CLASS_GLACIER_IR = STORAGE_CLASS_GLACIER_IR;
 exports.STORAGE_CLASS_DEEP_ARCHIVE = STORAGE_CLASS_DEEP_ARCHIVE;
+exports.RESTORED_OBJECTS_DIR = RESTORED_OBJECTS_DIR;
+exports.RESTORE_STATUS_CAN_RESTORE = RESTORE_STATUS_CAN_RESTORE;
+exports.RESTORE_STATUS_ONGOING = RESTORE_STATUS_ONGOING;
+exports.RESTORE_STATUS_RESTORED = RESTORE_STATUS_RESTORED;
 exports.DEFAULT_S3_USER = DEFAULT_S3_USER;
 exports.DEFAULT_OBJECT_ACL = DEFAULT_OBJECT_ACL;
 exports.decode_chunked_upload = decode_chunked_upload;
