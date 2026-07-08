@@ -1020,6 +1020,12 @@ function resolve_archive_policy(req) {
     if (!nsr) {
         throw new RpcError('INVALID_ARCHIVE_RESOURCE', `Namespace resource not found: ${resource_name}`);
     }
+    if (!nsr.archive) {
+        throw new RpcError(
+            'INVALID_ARCHIVE_RESOURCE',
+            `Namespace resource "${resource_name}" must have archive:true to be used as a deep archive resource`
+        );
+    }
     return { deep_archive_resource: { resource: nsr._id, path: resource_path } };
 }
 
@@ -2692,3 +2698,6 @@ exports.get_vector_index = get_vector_index;
 exports.list_vector_indices = list_vector_indices;
 exports.delete_vector_index = delete_vector_index;
 exports.update_rows_since_index = update_rows_since_index;
+
+// Exported for unit testing only
+exports._resolve_archive_policy = resolve_archive_policy;

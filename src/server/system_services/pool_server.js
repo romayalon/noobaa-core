@@ -119,16 +119,17 @@ function new_pool_defaults(name, system_id, resource_type, pool_node_type, owner
     };
 }
 
-function new_namespace_resource_defaults(name, system_id, account_id, connection, nsfs_config, access_mode) {
-    return {
+function new_namespace_resource_defaults(name, system_id, account_id, connection, nsfs_config, access_mode, archive) {
+    return _.omitBy({
         _id: system_store.new_system_store_id(),
         system: system_id,
         account: account_id,
         name,
         connection,
         nsfs_config,
-        access_mode
-    };
+        access_mode,
+        archive,
+    }, _.isUndefined);
 }
 
 async function create_hosts_pool(req) {
@@ -275,7 +276,7 @@ async function create_namespace_resource(req) {
     let namespace_resource;
     if (req.rpc_params.nsfs_config) {
         namespace_resource = new_namespace_resource_defaults(name, req.system._id, req.account._id, undefined, req.rpc_params.nsfs_config,
-            req.rpc_params.access_mode);
+            req.rpc_params.access_mode, req.rpc_params.archive);
         const already_used_by = system_store.data.namespace_resources.find(cur_nsr => cur_nsr.nsfs_config &&
             (cur_nsr.nsfs_config.fs_root_path === namespace_resource.nsfs_config.fs_root_path));
         if (already_used_by) {
@@ -317,7 +318,7 @@ async function create_namespace_resource(req) {
             region: connection.region,
             azure_log_access_keys,
             azure_sts_credentials
-        }, _.isUndefined), undefined, req.rpc_params.access_mode);
+        }, _.isUndefined), undefined, req.rpc_params.access_mode, req.rpc_params.archive);
 
         const cloud_buckets = await server_rpc.client.bucket.get_cloud_buckets({
             connection: connection.name,
@@ -1072,7 +1073,8 @@ function get_namespace_resource_info(namespace_resource) {
         name: namespace_resource.name,
         mode: calc_namespace_resource_mode(namespace_resource),
         undeletable: check_namespace_resource_deletion(namespace_resource),
-        access_mode: namespace_resource.access_mode
+        access_mode: namespace_resource.access_mode,
+        archive: namespace_resource.archive,
     }, _.isUndefined);
     return info;
 }
