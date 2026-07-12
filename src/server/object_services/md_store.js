@@ -27,6 +27,10 @@ const data_block_schema = require('./schemas/data_block_schema');
 const data_block_indexes = require('./schemas/data_block_indexes');
 const config = require('../../../config');
 const s3_utils = require('../../endpoint/s3/s3_utils');
+const {
+    XATTR_RESTORE_ONGOING_DB,
+    XATTR_RESTORE_EXPIRY_DB,
+} = require('../../sdk/deep_archive_utils');
 
 
 // const sql_or_conditions = (...conditions) => conditions.filter(Boolean).join(' OR ');
@@ -880,6 +884,67 @@ class MDStore {
         }, {
             limit: Math.min(limit, 1000),
             hint: 'deleted_unreclaimed_index',
+            preferred_pool: 'read_only',
+        });
+        return results;
+    }
+
+    /**
+     * Find objects with an ongoing deep-archive restore (xattr ongoing === 'true').
+     * @param {number} limit
+     * @returns {Promise<nb.ObjectMD[]>}
+     */
+    async find_objects_with_restore_ongoing(limit) {
+        const results = await this._objects.find({
+            deleted: null,
+            upload_started: null,
+            [`xattr.${XATTR_RESTORE_ONGOING_DB}`]: 'true',
+        }, {
+            limit: Math.min(limit, 1000),
+            hint: 'deep_archive_restore_ongoing_index',
+            preferred_pool: 'read_only',
+        });
+        return results;
+    }
+
+    /**
+     * Find restored objects whose restore expiry xattr is in the past.
+     * Skips objects still marked ongoing.
+     * @param {Date|string} now
+     * @param {number} limit
+     * @returns {Promise<nb.ObjectMD[]>}
+     */
+    async find_objects_with_restore_expired(now, limit) {
+        const now_iso = (now instanceof Date ? now : new Date(now)).toISOString();
+        const results = await this._objects.find({
+            deleted: null,
+            upload_started: null,
+            [`xattr.${XATTR_RESTORE_EXPIRY_DB}`]: {
+                $exists: true,
+                $ne: '',
+                $lt: now_iso,
+            },
+            [`xattr.${XATTR_RESTORE_ONGOING_DB}`]: { $ne: 'true' },
+        }, {
+            limit: Math.min(limit, 1000),
+            hint: 'deep_archive_restore_expiry_index',
+            preferred_pool: 'read_only',
+        });
+        return results;
+    }
+
+    /**
+     * Find objects whose standard-tier data was marked expired and not yet reclaimed.
+     * @param {number} limit
+     * @returns {Promise<nb.ObjectMD[]>}
+     */
+    async find_objects_with_data_expired(limit) {
+        const results = await this._objects.find({
+            data_expired: { $exists: true },
+            reclaimed: null,
+        }, {
+            limit: Math.min(limit, 1000),
+            hint: 'data_expired_unreclaimed_index',
             preferred_pool: 'read_only',
         });
         return results;

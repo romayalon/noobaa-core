@@ -7,10 +7,17 @@ const util = require('util');
 const dbg = require('../util/debug_module')(__filename);
 const s3_utils = require('../endpoint/s3/s3_utils');
 const S3Error = require('../endpoint/s3/s3_errors').S3Error;
+const deep_archive_utils = require('./deep_archive_utils');
 
-const XATTR_RESTORE_ONGOING = 'noobaa-deep-archive.restore.ongoing';
-const XATTR_RESTORE_EXPIRY = 'noobaa-deep-archive.restore.expiry';
-const XATTR_STORAGE_CLASS = 'noobaa-deep-archive.storage-class';
+const {
+    XATTR_RESTORE_ONGOING,
+    XATTR_RESTORE_EXPIRY,
+    XATTR_RESTORE_DAYS,
+    XATTR_STORAGE_CLASS,
+    merge_xattr,
+    compute_restore_expiry,
+    clear_restore_xattr_patch,
+} = deep_archive_utils;
 
 /**
  * NamespaceDeepArchive is the archive backend for GLACIER / DEEP_ARCHIVE objects.
@@ -27,6 +34,7 @@ const XATTR_STORAGE_CLASS = 'noobaa-deep-archive.storage-class';
  * Restore status is persisted via object xattr metadata keys:
  *   - noobaa-deep-archive.restore.ongoing — "true" while restore is in progress
  *   - noobaa-deep-archive.restore.expiry — ISO date string of restore expiry
+ *   - noobaa-deep-archive.restore.days — requested restore Days (for BG finalize)
  *   - noobaa-deep-archive.storage-class — the storage class (DEEP_ARCHIVE / GLACIER)
  *
  * Data flow:
@@ -614,29 +622,32 @@ class NamespaceDeepArchive {
             }
 
             if (md.restore_status.expiry_time && new Date(md.restore_status.expiry_time) > new Date()) {
-                const new_expiry = new Date();
-                new_expiry.setDate(new_expiry.getDate() + params.days);
+                const new_expiry = compute_restore_expiry(params.days);
                 dbg.log0('NamespaceDeepArchive.restore_object: already restored, extending expiry to', new_expiry);
 
                 await object_sdk.rpc_client.object.update_object_md({
                     bucket: params.bucket,
                     key: params.key,
-                    xattr: {
+                    xattr: merge_xattr(md.xattr, {
                         [XATTR_RESTORE_ONGOING]: '',
                         [XATTR_RESTORE_EXPIRY]: new_expiry.toISOString(),
-                    },
+                        [XATTR_RESTORE_DAYS]: '',
+                    }),
                 });
                 return { accepted: false };
             }
         }
 
+        const ongoing_xattr = merge_xattr(md.xattr, {
+            [XATTR_RESTORE_ONGOING]: 'true',
+            [XATTR_RESTORE_EXPIRY]: '',
+            [XATTR_RESTORE_DAYS]: String(params.days),
+        });
+
         await object_sdk.rpc_client.object.update_object_md({
             bucket: params.bucket,
             key: params.key,
-            xattr: {
-                [XATTR_RESTORE_ONGOING]: 'true',
-                [XATTR_RESTORE_EXPIRY]: '',
-            },
+            xattr: ongoing_xattr,
         });
 
         try {
@@ -650,6 +661,15 @@ class NamespaceDeepArchive {
             });
         } catch (err) {
             dbg.warn('NamespaceDeepArchive.restore_object: archive S3 RestoreObject call failed', err);
+            try {
+                await object_sdk.rpc_client.object.update_object_md({
+                    bucket: params.bucket,
+                    key: params.key,
+                    xattr: merge_xattr(md.xattr, clear_restore_xattr_patch()),
+                });
+            } catch (rollback_err) {
+                dbg.error('NamespaceDeepArchive.restore_object: failed to roll back restore xattrs', rollback_err);
+            }
             throw err;
         }
 

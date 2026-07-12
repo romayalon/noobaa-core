@@ -24,6 +24,8 @@ const db_client = require('../util/db_client');
 const { BucketsReclaimer } = require('./bg_services/buckets_reclaimer');
 const { ObjectsReclaimer } = require('./bg_services/objects_reclaimer');
 const { MirrorWriter } = require('./bg_services/mirror_writer');
+const { DeepArchiveRestoreWorker } = require('./bg_services/deep_archive_restore_worker');
+const { DeepArchiveRestoreExpiryWorker } = require('./bg_services/deep_archive_restore_expiry_worker');
 const { TieringTTFWorker } = require('./bg_services/tier_ttf_worker');
 const { TieringSpillbackWorker } = require('./bg_services/tier_spillback_worker');
 const cluster_master = require('./bg_services/cluster_master');
@@ -165,6 +167,24 @@ function run_master_workers() {
         }));
     } else {
         dbg.warn('OBJECT_RECLAIMER NOT ENABLED');
+    }
+
+    if (config.DEEP_ARCHIVE_RESTORE_WORKER_ENABLED) {
+        register_bg_worker(new DeepArchiveRestoreWorker({
+            name: 'deep_archive_restore_worker',
+            client: server_rpc.client
+        }));
+    } else {
+        dbg.warn('DEEP_ARCHIVE_RESTORE_WORKER NOT ENABLED');
+    }
+
+    if (config.DEEP_ARCHIVE_RESTORE_EXPIRY_WORKER_ENABLED) {
+        register_bg_worker(new DeepArchiveRestoreExpiryWorker({
+            name: 'deep_archive_restore_expiry_worker',
+            client: server_rpc.client
+        }));
+    } else {
+        dbg.warn('DEEP_ARCHIVE_RESTORE_EXPIRY_WORKER NOT ENABLED');
     }
 
     if (config.TIER_TTF_WORKER_ENABLED) {

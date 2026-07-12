@@ -160,4 +160,57 @@ module.exports = [
             }
         }
     },
+
+    /////////////////////////////
+    // DEEP ARCHIVE RESTORE    //
+    /////////////////////////////
+
+    {
+        // find_objects_with_restore_ongoing()
+        fields: {
+            // DB stores xattr keys with '.' replaced by '@'
+            'xattr.noobaa-deep-archive@restore@ongoing': 1,
+        },
+        options: {
+            name: 'deep_archive_restore_ongoing_index',
+            unique: false,
+            partialFilterExpression: {
+                deleted: null,
+                upload_started: null,
+                'xattr.noobaa-deep-archive@restore@ongoing': 'true',
+            }
+        }
+    },
+
+    {
+        // find_objects_with_restore_expired()
+        fields: {
+            'xattr.noobaa-deep-archive@restore@expiry': 1,
+        },
+        options: {
+            name: 'deep_archive_restore_expiry_index',
+            unique: false,
+            partialFilterExpression: {
+                deleted: null,
+                upload_started: null,
+                'xattr.noobaa-deep-archive@restore@expiry': { $exists: true },
+            }
+        }
+    },
+
+    {
+        // find_objects_with_data_expired()
+        fields: {
+            data_expired: 1,
+            reclaimed: 1,
+        },
+        options: {
+            name: 'data_expired_unreclaimed_index',
+            unique: false,
+            partialFilterExpression: {
+                data_expired: { $exists: true },
+                reclaimed: null,
+            }
+        }
+    },
 ];
