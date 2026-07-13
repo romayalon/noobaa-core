@@ -437,6 +437,7 @@ interface ObjectMD {
     lock_settings: { retention: { mode: string; retain_until_date: Date; }, legal_hold: { status: string } };
     transition_status?: string;
     data_expired?: Date;
+    restore_status?: RestoreStatus;
 }
 
 interface ObjectOwner {
@@ -1356,8 +1357,8 @@ type NodeCallback<T = void> = (err: Error | null, res?: T) => void;
 type RestoreState = 'CAN_RESTORE' | 'ONGOING' | 'RESTORED';
 
 interface RestoreStatus {
-    state: nb.RestoreState;
-    ongoing?: boolean;
+    state?: nb.RestoreState;
+    ongoing: boolean;
     expiry_time?: Date;
 
     tape_info?: TapeInfo[];

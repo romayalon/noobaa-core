@@ -1636,6 +1636,14 @@ module.exports = {
             type: 'string',
             enum: ['IN_PROGRESS', 'DONE']
         },
+        restore_status: {
+            type: 'object',
+            required: ['ongoing'],
+            properties: {
+                ongoing: { type: 'boolean' },
+                expiry_time: { idate: true },
+            }
+        },
         bucket_logging: {
             type: 'object',
             required: ['log_bucket', 'log_prefix'],

@@ -630,6 +630,7 @@ module.exports = {
                     xattr: { $ref: '#/definitions/xattr' },
                     cache_last_valid_time: { idate: true },
                     last_modified_time: { idate: true },
+                    restore_status: { $ref: 'common_api#/definitions/restore_status' },
                 }
             },
             auth: { system: ['admin', 'user'] }
@@ -1599,6 +1600,7 @@ module.exports = {
                 },
                 transition_status: { $ref: 'common_api#/definitions/transition_status_enum' },
                 data_expired: { idate: true },
+                restore_status: { $ref: 'common_api#/definitions/restore_status' },
             }
         },
 
