@@ -211,6 +211,95 @@ mocha.describe('deep_archive_via_s3', function() {
         );
     });
 
+    mocha.describe('Versioning', function() {
+        const storage_class = s3_utils.STORAGE_CLASS_DEEP_ARCHIVE;
+
+        mocha.it('ENABLED: archive PutObject creates distinct versions with separate archive keys', async function() {
+            await s3.putBucketVersioning({
+                Bucket: BUCKET,
+                VersioningConfiguration: { MFADelete: 'Disabled', Status: 'Enabled' },
+            });
+
+            const key = 's3-put/versioning/enabled';
+            const buf1 = crypto.randomBytes(64);
+            const buf2 = crypto.randomBytes(128);
+
+            const r1 = await s3.putObject({
+                Bucket: BUCKET,
+                Key: key,
+                Body: buf1,
+                ContentType: 'application/octet-stream',
+                StorageClass: storage_class,
+            });
+            assert.ok(r1.VersionId);
+            assert.notStrictEqual(r1.VersionId, 'null');
+
+            const r2 = await s3.putObject({
+                Bucket: BUCKET,
+                Key: key,
+                Body: buf2,
+                ContentType: 'application/octet-stream',
+                StorageClass: storage_class,
+            });
+            assert.ok(r2.VersionId);
+            assert.notStrictEqual(r2.VersionId, 'null');
+            assert.notStrictEqual(r2.VersionId, r1.VersionId);
+
+            const listed = await s3.listObjectVersions({ Bucket: BUCKET, Prefix: key });
+            const versions = (listed.Versions || []).filter(v => v.Key === key);
+            assert.strictEqual(versions.length, 2);
+            assert.ok(versions.every(v => v.VersionId === r1.VersionId || v.VersionId === r2.VersionId));
+
+            const md1 = await rpc_client.object.read_object_md({
+                bucket: BUCKET, key, version_id: r1.VersionId,
+            });
+            const md2 = await rpc_client.object.read_object_md({
+                bucket: BUCKET, key, version_id: r2.VersionId,
+            });
+            assert.notStrictEqual(md1.obj_id, md2.obj_id);
+
+            await assert_archived_via_s3({ key, buf: buf1, storage_class, version_id: r1.VersionId });
+            await assert_archived_via_s3({ key, buf: buf2, storage_class, version_id: r2.VersionId });
+        });
+
+        mocha.it('SUSPENDED: archive PutObject replaces null version; latest points at new archive object', async function() {
+            await s3.putBucketVersioning({
+                Bucket: BUCKET,
+                VersioningConfiguration: { MFADelete: 'Disabled', Status: 'Suspended' },
+            });
+
+            const key = 's3-put/versioning/suspended';
+            const buf1 = crypto.randomBytes(48);
+            const buf2 = crypto.randomBytes(96);
+
+            await s3.putObject({
+                Bucket: BUCKET,
+                Key: key,
+                Body: buf1,
+                ContentType: 'application/octet-stream',
+                StorageClass: storage_class,
+            });
+            await s3.putObject({
+                Bucket: BUCKET,
+                Key: key,
+                Body: buf2,
+                ContentType: 'application/octet-stream',
+                StorageClass: storage_class,
+            });
+
+            const latest_md = await rpc_client.object.read_object_md({ bucket: BUCKET, key });
+            assert.strictEqual(latest_md.size, buf2.length);
+            assert.strictEqual(latest_md.storage_class, storage_class);
+
+            const listed = await s3.listObjectVersions({ Bucket: BUCKET, Prefix: key });
+            const latest_versions = (listed.Versions || []).filter(v => v.Key === key && v.IsLatest);
+            assert.strictEqual(latest_versions.length, 1);
+            assert.strictEqual(latest_versions[0].Size, buf2.length);
+
+            await assert_archived_via_s3({ key, buf: buf2, storage_class });
+        });
+    });
+
     }); // PutObject
 
     mocha.describe('CopyObject', function() {
