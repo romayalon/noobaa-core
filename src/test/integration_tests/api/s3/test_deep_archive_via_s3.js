@@ -46,6 +46,18 @@ function parse_obj_id(obj_id) {
 }
 
 /**
+ * Live objectmultiparts rows for an MPU, read through db_client (not MDStore).
+ * @param {string} obj_id
+ * @returns {Promise<nb.ObjectMultipart[]>}
+ */
+async function find_db_multiparts(obj_id) {
+    return db_client.instance().collection('objectmultiparts').find({
+        obj: parse_obj_id(obj_id),
+        deleted: null,
+    });
+}
+
+/**
  * @param {string} bid
  * @param {string} obj_id
  * @param {number} expected_len
@@ -809,12 +821,20 @@ mocha.describe('deep_archive_via_s3', function() {
             const part2 = crypto.randomBytes(64);
             const buf = Buffer.concat([part1, part2]);
 
-            const { etag } = await multipart_upload({
+            const { etag, upload_id } = await multipart_upload({
                 key,
                 parts: [part1, part2],
                 storage_class: s3_utils.STORAGE_CLASS_STANDARD,
             });
             assert.ok(etag);
+
+            const db_parts = await find_db_multiparts(upload_id);
+            assert.strictEqual(db_parts.length, 2);
+            for (const mp of db_parts) {
+                assert.ok(mp.md5_b64, 'STANDARD MPU part should persist md5_b64');
+                assert.strictEqual(mp.target_data_etag, undefined, 'STANDARD MPU part should not persist target_data_etag');
+                assert.strictEqual(mp.etag, undefined, 'STANDARD MPU part should not persist schema field etag');
+            }
 
             const md = await rpc_client.object.read_object_md({ bucket: BUCKET, key });
             assert.strictEqual(md.size, buf.length);
@@ -834,17 +854,22 @@ mocha.describe('deep_archive_via_s3', function() {
                 const part2 = crypto.randomBytes(128);
                 const buf = Buffer.concat([part1, part2]);
 
-                const { etag } = await multipart_upload({
+                const { etag, upload_id } = await multipart_upload({
                     key,
                     parts: [part1, part2],
                     storage_class,
                 });
 
+                const db_parts = await find_db_multiparts(upload_id);
+                assert.strictEqual(db_parts.length, 2);
+                for (const mp of db_parts) {
+                    assert.ok(mp.target_data_etag, `${storage_class} MPU part should persist target_data_etag`);
+                    assert.strictEqual(mp.etag, undefined, `${storage_class} MPU part should not persist schema field etag`);
+                }
+
                 await assert_archived_via_s3({ key, buf, storage_class });
                 const head = await s3.headObject({ Bucket: BUCKET, Key: key });
-                assert.strictEqual(
-                    s3_utils.parse_etag(head.ETag),
-                    s3_utils.parse_etag(etag)
+                assert.strictEqual(s3_utils.parse_etag(head.ETag), s3_utils.parse_etag(etag)
                 );
             });
             mocha.it(`rejects ${storage_class} complete with wrong part etag`, async function() {
@@ -1020,6 +1045,11 @@ mocha.describe('deep_archive_via_s3', function() {
                     ContentLength: part_buf.length,
                 });
 
+                const db_parts = await find_db_multiparts(upload_id);
+                assert.strictEqual(db_parts.length, 1);
+                assert.ok(db_parts[0].target_data_etag, `${storage_class} UploadPart should persist target_data_etag`);
+                assert.strictEqual(s3_utils.parse_etag(db_parts[0].target_data_etag), s3_utils.parse_etag(part_res.ETag));
+
                 // ListParts is served from NB MD for archive uploads as well.
                 const listed_after = await s3.listParts({
                     Bucket: BUCKET,
@@ -1030,16 +1060,9 @@ mocha.describe('deep_archive_via_s3', function() {
                 assert.strictEqual(listed_parts.length, 1);
                 assert.strictEqual(listed_parts[0].PartNumber, 1);
                 assert.strictEqual(listed_parts[0].Size, part_buf.length);
-                assert.strictEqual(
-                    s3_utils.parse_etag(listed_parts[0].ETag),
-                    s3_utils.parse_etag(part_res.ETag)
-                );
+                assert.strictEqual(s3_utils.parse_etag(listed_parts[0].ETag), s3_utils.parse_etag(part_res.ETag));
 
-                await s3.abortMultipartUpload({
-                    Bucket: BUCKET,
-                    Key: key,
-                    UploadId: upload_id,
-                });
+                await s3.abortMultipartUpload({ Bucket: BUCKET, Key: key, UploadId: upload_id });
             });
 
             mocha.it(`aborts ${storage_class} multipart upload on both NB MD and archive`, async function() {
@@ -1051,11 +1074,7 @@ mocha.describe('deep_archive_via_s3', function() {
                     StorageClass: storage_class,
                 });
                 const upload_id = create_res.UploadId;
-                const md = await rpc_client.object.read_object_md({
-                    bucket: BUCKET,
-                    key,
-                    obj_id: upload_id,
-                });
+                const md = await rpc_client.object.read_object_md({ bucket: BUCKET, key, obj_id: upload_id });
                 const archive_key = get_archive_key(bucket_id, upload_id);
                 const target_upload_id = md.target_data_info.upload_id;
 

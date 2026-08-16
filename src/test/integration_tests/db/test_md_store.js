@@ -572,6 +572,28 @@ mocha.describe('md_store', function() {
             return md_store.delete_multiparts_of_object(obj);
         });
 
+        // ListParts uses find_completed_multiparts_of_object. Archive parts may have
+        // only target_data_etag (no md5_b64); the query must still return them.
+        mocha.it('find_completed_multiparts_of_object includes target_data_etag parts', async function() {
+            const obj_id = md_store.make_md_id();
+            const archive_mp = {
+                _id: md_store.make_md_id(),
+                system: system_id,
+                bucket: bucket_id,
+                obj: obj_id,
+                num: 1,
+                size: 32,
+                target_data_etag: 'completed-archive-etag',
+                create_time: new Date(),
+            };
+            await md_store.insert_multipart(archive_mp);
+
+            const completed = await md_store.find_completed_multiparts_of_object(obj_id, 0, 10);
+            assert.strictEqual(completed.length, 1);
+            assert.strictEqual(completed[0].target_data_etag, 'completed-archive-etag');
+            assert.strictEqual(completed[0].md5_b64, undefined);
+        });
+
     });
 
 

@@ -1415,10 +1415,10 @@ class MDStore {
             size: { $exists: true },
             create_time: { $exists: true },
             deleted: null,
-            // STANDARD parts commit with md5_b64; archive parts commit with opaque etag.
+            // STANDARD parts commit with md5_b64; archive parts commit with opaque target_data_etag.
             $or: [
                 { md5_b64: { $exists: true } },
-                { etag: { $exists: true } },
+                { target_data_etag: { $exists: true } },
             ],
         }, {
             sort: {

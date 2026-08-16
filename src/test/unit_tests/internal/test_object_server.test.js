@@ -7,7 +7,7 @@ const config = require('../../../../config');
 const CONSTANTS = require('../../../common/constants');
 const SensitiveString = require('../../../util/sensitive_string');
 const system_utils = require('../../../server/utils/system_utils');
-const { MDStore } = require('../../../server/object_services/md_store');
+const { MDStore, make_md_id } = require('../../../server/object_services/md_store');
 const object_server = require('../../../server/object_services/object_server');
 
 describe('object_server - delete_multiple_objects', () => {
@@ -541,5 +541,54 @@ describe('object_server - update_bulk_delete_results', () => {
         expect(results[2]).toHaveProperty('seq', 101);
 
         expect(results[3]).toHaveProperty('seq', 103);
+    });
+});
+
+const EMPTY_MD5_HEX = 'd41d8cd98f00b204e9800998ecf8427e';
+const EMPTY_MD5_B64 = Buffer.from(EMPTY_MD5_HEX, 'hex').toString('base64');
+const SHA256_HEX = 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855';
+const SHA256_B64 = Buffer.from(SHA256_HEX, 'hex').toString('base64');
+
+describe('object_server - get_etag', () => {
+
+    const get_etag = object_server.__testing.get_etag;
+
+    test('returns ObjectMD etag when set (single-part / object response)', () => {
+        expect(get_etag({ etag: 'object-md-etag' })).toBe('object-md-etag');
+    });
+
+    test('returns target_data_etag for multipart when ObjectMD etag is absent', () => {
+        expect(get_etag({ target_data_etag: 'archive-part-etag' })).toBe('archive-part-etag');
+    });
+
+    test('prefers pending updates.target_data_etag over stored md5_b64', () => {
+        expect(get_etag(
+            { md5_b64: EMPTY_MD5_B64 },
+            { target_data_etag: 'from-updates' }
+        )).toBe('from-updates');
+    });
+
+    test('prefers updates.etag over target_data_etag (ObjectMD complete path)', () => {
+        expect(get_etag(
+            { target_data_etag: 'multipart-field' },
+            { etag: 'object-md-etag' }
+        )).toBe('object-md-etag');
+    });
+
+    test('falls back to md5_b64 hex when neither etag field is set', () => {
+        expect(get_etag({ md5_b64: EMPTY_MD5_B64 })).toBe(EMPTY_MD5_HEX);
+    });
+
+    test('falls back to sha256-prefixed hex', () => {
+        expect(get_etag({ sha256_b64: SHA256_B64 })).toBe('sha256-' + SHA256_HEX);
+    });
+
+    test('falls back to id-prefixed hex when only _id is present', () => {
+        const id = make_md_id();
+        expect(get_etag({ _id: id })).toBe('id-' + id.toHexString());
+    });
+
+    test('returns empty string when entity has no etag sources', () => {
+        expect(get_etag({})).toBe('');
     });
 });

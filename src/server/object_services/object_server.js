@@ -754,11 +754,11 @@ async function complete_multipart(req) {
     }
     set_updates.num_parts = req.rpc_params.num_parts;
     set_updates.create_time = new Date();
-    // STANDARD MPU keeps digest-derived etags (md5_b64) 
+    // STANDARD MPU keeps digest-derived etags (md5_b64)
     // Target-namespace MPU (obj.target_data_info.upload_id) - does not use digest-derived etags, so we need to store the etag from the client
-    // client's Etag is not necessarily md5 (opaque), therefore we store in the multipart etag
+    // client's ETag is not necessarily md5 (opaque), therefore we store it as target_data_etag
     if (obj.target_data_info?.upload_id && req.rpc_params.etag) {
-        set_updates.etag = req.rpc_params.etag;
+        set_updates.target_data_etag = req.rpc_params.etag;
     }
 
     await MDStore.instance().update_multipart_by_id(multipart_id, set_updates);
@@ -2175,6 +2175,9 @@ function check_object_mode(req, obj, rpc_code) {
  * Return the etag ("Entity tag") for the given entity.
  * Entity can be ObjectMD or ObjectMultipart or an updates for one of those.
  *
+ * ObjectMD stores the response etag on `etag`. ObjectMultipart stores an opaque
+ * target-namespace part ETag on `target_data_etag` (e.g. archive UploadPart).
+ *
  * Notice that if the etag field is returns from md5 hex then we can put it as is,
  * however if we use a sha256 or id we have to add some prefix with a dash so that
  * s3 clients can understand that this is not an md5.
@@ -2184,6 +2187,7 @@ function check_object_mode(req, obj, rpc_code) {
  *
  * @typedef {{
  *  etag?: string;
+ *  target_data_etag?: string;
  *  md5_b64?: string;
  *  sha256_b64?: string;
  *  _id?: nb.ID;
@@ -2194,7 +2198,8 @@ function check_object_mode(req, obj, rpc_code) {
  * @returns {string}
  */
 function get_etag(entity, updates) {
-    const etag = updates?.etag || entity.etag;
+    const etag = updates?.etag || updates?.target_data_etag ||
+        entity.etag || entity.target_data_etag;
     if (etag) return etag;
 
     const md5_b64 = updates?.md5_b64 || entity.md5_b64;
@@ -2756,6 +2761,8 @@ exports.update_transition_info = update_transition_info;
 
 if (process.env.NODE_ENV === 'test') {
     exports.__testing = {
-        update_bulk_delete_results
+        update_bulk_delete_results,
+        get_etag,
+        _complete_object_multiparts
     };
 }

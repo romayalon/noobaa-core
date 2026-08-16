@@ -405,7 +405,7 @@ interface ObjectMultipart {
     size: number;
     md5_b64?: string;
     sha256_b64?: string;
-    etag?: string;
+    target_data_etag?: string;
     create_time?: Date;
     // partial
 }

@@ -44,7 +44,7 @@ module.exports = {
         },
 
         // hashes are saved when provided during upload
-        // md5 is used for multipart etag (STANDARD); opaque etag is used for archive parts
+        // md5 is used for multipart etag (STANDARD); opaque target_data_etag is used for archive parts
         // where ETag is not an MD5 of the part data.
         md5_b64: {
             type: 'string'
@@ -52,8 +52,9 @@ module.exports = {
         sha256_b64: {
             type: 'string'
         },
-        // Opaque part ETag (e.g. archive UploadPart). Prefer get_etag() over md5_b64 when set.
-        etag: {
+        // Opaque part ETag from the target namespace (e.g. archive UploadPart).
+        // Prefer get_etag() over md5_b64 when set.
+        target_data_etag: {
             type: 'string'
         },
 

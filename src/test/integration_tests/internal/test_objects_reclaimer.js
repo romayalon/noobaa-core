@@ -538,7 +538,7 @@ async function multipart_upload_and_patch(md_updates) {
         obj: oid,
         num: 1000,
         size: 0,
-        etag: 'deep-archive-opaque-etag',
+        target_data_etag: 'deep-archive-opaque-etag',
         create_time: new Date(),
     });
 
