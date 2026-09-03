@@ -18,6 +18,7 @@ const { ObjectsReclaimer } = require('../../../server/bg_services/objects_reclai
 const { MDStore } = require('../../../server/object_services/md_store');
 const map_deleter = require('../../../server/object_services/map_deleter');
 const test_utils = require('../../system_tests/test_utils');
+const system_store = require('../../../server/system_services/system_store').get_instance();
 
 const object_io = new ObjectIO();
 object_io.set_verification_mode();
@@ -331,6 +332,87 @@ mocha.describe('ObjectsReclaimer expire paths', function() {
             const parts = await MDStore.instance().find_all_parts_of_object(after);
             assert.strictEqual(parts.length, 0, 'local mappings should be deleted');
         });
+
+        mocha.it('rejects remove_archive_policy while deleted unreclaimed archive objects exist', async function() {
+            const name = `test-reclaimer-policy-unreclaimed-${Date.now()}`;
+            await rpc_client.bucket.create_bucket({
+                name,
+                archive_policy: { deep_archive_resource: { resource: ARCHIVE_NSR } },
+            });
+            const bucket = system_store.data.buckets.find(b => b.name.unwrap() === name);
+            assert.ok(bucket, `expected bucket ${name} in system_store`);
+            const obj = {
+                _id: MDStore.instance().make_md_id(),
+                system: system_store.data.systems[0]._id,
+                bucket: bucket._id,
+                key: `deleted-unreclaimed-${Date.now()}`,
+                storage_class: CONSTANTS.ARCHIVE.STORAGE_CLASS.DEEP_ARCHIVE,
+                deleted: new Date(),
+                create_time: new Date(),
+                content_type: 'application/octet-stream',
+            };
+            await MDStore.instance().insert_object(obj);
+            await assert.rejects(
+                () => rpc_client.bucket.update_bucket({ name, remove_archive_policy: true }),
+                err => err.rpc_code === 'BUCKET_HAS_ARCHIVED_OBJECTS',
+            );
+            await MDStore.instance().update_object_by_id(obj._id, { reclaimed: new Date() });
+            await rpc_client.bucket.update_bucket({ name, remove_archive_policy: true });
+            await rpc_client.bucket.delete_bucket({ name });
+        });
+
+        mocha.it('parks missing-bucket archive objects and still reclaims later ids', async function() {
+            await drain_unreclaimed_queue(reclaimer);
+            const orig_batch = config.OBJECT_RECLAIMER_BATCH_SIZE;
+            config.OBJECT_RECLAIMER_BATCH_SIZE = 1;
+            try {
+                const poison = {
+                    _id: MDStore.instance().make_md_id(),
+                    system: system_store.data.systems[0]._id,
+                    bucket: MDStore.instance().make_md_id(), // no such bucket
+                    key: `poison-archive-${Date.now()}`,
+                    storage_class: CONSTANTS.ARCHIVE.STORAGE_CLASS.DEEP_ARCHIVE,
+                    deleted: new Date(),
+                    create_time: new Date(),
+                    content_type: 'application/octet-stream',
+                };
+                await MDStore.instance().insert_object(poison);
+                const good = await upload_and_patch({ deleted: new Date() });
+
+                let good_reclaimed = false;
+                for (let i = 0; i < 50; i++) {
+                    await reclaimer.reclaim_deleted_objects();
+                    const after = await MDStore.instance().find_object_by_id(good._id);
+                    if (after.reclaimed) {
+                        good_reclaimed = true;
+                        break;
+                    }
+                }
+                const poison_after = await MDStore.instance().find_object_by_id(poison._id);
+                assert.ok(!poison_after.reclaimed, 'missing-bucket archive object must stay unreclaimed');
+                assert.ok(good_reclaimed, 'later unreclaimed object must still be reclaimed');
+                await MDStore.instance().update_object_by_id(poison._id, { reclaimed: new Date() });
+            } finally {
+                config.OBJECT_RECLAIMER_BATCH_SIZE = orig_batch;
+                reclaimer._unreclaimed_marker = null;
+            }
+        });
+
+        mocha.it('_should_park_orphaned_archive parks missing bucket/policy, not local glacier', function() {
+            const archive_bucket = { archive_policy: { deep_archive_resource: { resource: 'nsr' } } };
+            assert.strictEqual(reclaimer._should_park_orphaned_archive(
+                { storage_class: CONSTANTS.ARCHIVE.STORAGE_CLASS.DEEP_ARCHIVE }, undefined), true);
+            assert.strictEqual(reclaimer._should_park_orphaned_archive(
+                { storage_class: CONSTANTS.ARCHIVE.STORAGE_CLASS.DEEP_ARCHIVE }, {}), true);
+            assert.strictEqual(reclaimer._should_park_orphaned_archive(
+                { storage_class: CONSTANTS.ARCHIVE.STORAGE_CLASS.GLACIER }, {}), false);
+            assert.strictEqual(reclaimer._should_park_orphaned_archive(
+                { storage_class: CONSTANTS.ARCHIVE.STORAGE_CLASS.GLACIER }, undefined), true);
+            assert.strictEqual(reclaimer._should_park_orphaned_archive(
+                { storage_class: 'STANDARD' }, undefined), false);
+            assert.strictEqual(reclaimer._should_park_orphaned_archive(
+                { storage_class: CONSTANTS.ARCHIVE.STORAGE_CLASS.DEEP_ARCHIVE }, archive_bucket), false);
+        });
     });
 
     mocha.describe('delete_object_mappings_for_expired_restore_or_transition', function() {
@@ -454,6 +536,7 @@ async function drain_unreclaimed_queue(objects_reclaimer) {
             { reclaimed: new Date() },
         );
     }
+    objects_reclaimer._unreclaimed_marker = null;
 }
 
 /**

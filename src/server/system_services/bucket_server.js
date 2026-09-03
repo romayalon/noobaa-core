@@ -990,8 +990,9 @@ function get_bucket_changes_namespace(req, bucket, update_request, single_bucket
 
 /**
  * Handles archive policy changes for a bucket update.
- * When the bucket already has an archive policy, validates that no objects exist in
- * archive storage classes (DEEP_ARCHIVE, GLACIER) before allowing the change.
+ * When the bucket already has an archive policy, validates that no live or
+ * deleted-unreclaimed objects exist in archive storage classes (DEEP_ARCHIVE,
+ * GLACIER) before allowing the change.
  * Supports both setting a new archive policy and removing an existing one via remove_archive_policy.
  * @param {Object} req - the RPC request (carries system context for namespace resource lookup)
  * @param {Object} bucket - the existing bucket document from system_store
@@ -1077,17 +1078,21 @@ function resolve_archive_policy(req) {
 }
 
 /**
- * Validates that a bucket has no completed objects stored in archive storage classes
- * (DEEP_ARCHIVE or GLACIER). This check prevents archive policy changes or removal
- * when objects have already been archived, as those objects would become inaccessible
- * without the archive policy.
+ * Validates that a bucket has no objects stored in archive storage classes
+ * (DEEP_ARCHIVE or GLACIER), including soft-deleted rows ObjectsReclaimer has
+ * not marked reclaimed yet. Live-only checks would allow --remove-archive-policy
+ * after DeleteObject, dropping the namespace while remote keys are still pending.
  */
 async function _validate_no_archived_objects(bucket) {
     const deep_archive_storage_classes = ['DEEP_ARCHIVE', 'GLACIER'];
-    const has_archived_objects = await MDStore.instance()
-        .has_any_completed_objects_in_bucket_with_storage_class(bucket._id, deep_archive_storage_classes);
-    dbg.log0(`_validate_no_archived_objects: has_archived_objects ${has_archived_objects}`);
-    if (has_archived_objects) {
+    const md_store = MDStore.instance();
+    const [has_archived_objects, has_unreclaimed_archived_objects] = await Promise.all([
+        md_store.has_any_completed_objects_in_bucket_with_storage_class(bucket._id, deep_archive_storage_classes),
+        md_store.has_any_unreclaimed_objects_in_bucket_with_storage_class(bucket._id, deep_archive_storage_classes),
+    ]);
+    dbg.log0(`_validate_no_archived_objects: has_archived_objects ${has_archived_objects}` +
+        ` has_unreclaimed_archived_objects ${has_unreclaimed_archived_objects}`);
+    if (has_archived_objects || has_unreclaimed_archived_objects) {
         throw new RpcError('BUCKET_HAS_ARCHIVED_OBJECTS',
             `Cannot update or remove archive policy on bucket ${bucket.name.unwrap()}: ` +
             `bucket contains objects in archive storage classes (${deep_archive_storage_classes.join(', ')})`);

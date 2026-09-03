@@ -944,12 +944,22 @@ class MDStore {
         return return_results ? result.rows : [];
     }
 
-    async find_unreclaimed_objects(limit) {
-        const results = await this._objects.find({
+    /**
+     * Soft-deleted objects not yet marked reclaimed.
+     * Optional marker (_id exclusive) plus sort _id asc so a poisoned head-of-queue
+     * cannot be re-fetched as the same first `limit` rows every cycle.
+     * @param {number} limit
+     * @param {nb.ID} [marker]
+     * @returns {Promise<nb.ObjectMD[]>}
+     */
+    async find_unreclaimed_objects(limit, marker) {
+        const results = await this._objects.find(compact({
             deleted: { $exists: true },
-            reclaimed: null
-        }, {
+            reclaimed: null,
+            _id: marker ? { $gt: marker } : undefined,
+        }), {
             limit: Math.min(limit, 1000),
+            sort: { _id: 1 },
             hint: 'deleted_unreclaimed_index',
             preferred_pool: 'read_only',
         });

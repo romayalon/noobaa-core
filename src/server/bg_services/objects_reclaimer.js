@@ -10,12 +10,16 @@ const map_deleter = require('../object_services/map_deleter');
 const auth_server = require('../common_services/auth_server');
 const deep_archive_utils = require('../../util/deep_archive_utils');
 const P = require('../../util/promise');
+const { ARCHIVE } = require('../../common/constants');
+const ARCHIVE_STORAGE_CLASSES = Object.values(ARCHIVE.STORAGE_CLASS);
 
 class ObjectsReclaimer {
 
     constructor({ name, client }) {
         this.name = name;
         this.client = client;
+        /** @type {nb.ID|null} exclusive _id cursor for find_unreclaimed_objects */
+        this._unreclaimed_marker = null;
     }
 
     /**
@@ -45,10 +49,13 @@ class ObjectsReclaimer {
      *   delete remote keys and mark reclaimed.
      *   Mapping cleanup must succeed before enqueue so we do not mark reclaimed
      *   while restore copies may still remain.
+     * - Orphaned remote archive (bucket gone, or DEEP_ARCHIVE with no archive_policy):
+     *   leave unreclaimed and log; the _id marker still advances so a poisoned
+     *   head-of-queue cannot starve other reclaim work.
      * @returns {Promise<{ had_work: boolean, had_errors: boolean }>}
      */
     async reclaim_deleted_objects() {
-        const unreclaimed_objects = await MDStore.instance().find_unreclaimed_objects(config.OBJECT_RECLAIMER_BATCH_SIZE);
+        const unreclaimed_objects = await this._next_unreclaimed_batch();
         if (!unreclaimed_objects || !unreclaimed_objects.length) {
             dbg.log0('no objects in "unreclaimed" state. nothing to do');
             return { had_work: false, had_errors: false };
@@ -81,6 +88,13 @@ class ObjectsReclaimer {
                     }
                     const bucket_id = String(obj.bucket);
                     (pending_archive_deletes_by_bucket[bucket_id] ??= []).push(obj);
+                    return;
+                }
+                if (this._should_park_orphaned_archive(obj, bucket)) {
+                    dbg.error('object_reclaimer: cannot delete remote archive data; ' +
+                        'bucket or archive policy is gone. leaving unreclaimed',
+                        { key: obj.key, obj_id: obj._id, bucket: obj.bucket, storage_class: obj.storage_class });
+                    had_errors = true;
                     return;
                 }
                 reclaimed_objects_ids.push(obj._id);
@@ -208,6 +222,46 @@ class ObjectsReclaimer {
         if (!system || system_utils.system_in_maintenance(system._id)) return false;
 
         return true;
+    }
+
+    /**
+     * Next unreclaimed deleted-object batch, advancing an exclusive _id marker.
+     * Wraps to the start when the cursor passes the last row so newly deleted
+     * (or previously failed) objects are retried without starving later ids.
+     * @returns {Promise<nb.ObjectMD[]>}
+     */
+    async _next_unreclaimed_batch() {
+        const limit = config.OBJECT_RECLAIMER_BATCH_SIZE;
+        let unreclaimed_objects = await MDStore.instance().find_unreclaimed_objects(limit, this._unreclaimed_marker);
+        if (this._unreclaimed_marker && (!unreclaimed_objects || !unreclaimed_objects.length)) {
+            this._unreclaimed_marker = null;
+            unreclaimed_objects = await MDStore.instance().find_unreclaimed_objects(limit);
+        }
+        this._unreclaimed_marker = unreclaimed_objects?.length ?
+            unreclaimed_objects[unreclaimed_objects.length - 1]._id : null;
+        return unreclaimed_objects;
+    }
+
+    /**
+     * True when the object looks like remote archive data but the namespace is
+     * gone, so DeleteObjects cannot run.
+     *
+     * Park (leave unreclaimed, log error) rather than mark reclaimed — marking
+     * would silently leak tape/object-store keys. The _id marker still advances
+     * so these rows cannot wedge the whole queue. GLACIER without archive_policy
+     * is local tiering and is not parked.
+     * @param {nb.ObjectMD} obj
+     * @param {nb.Bucket} [bucket]
+     * @returns {boolean}
+     */
+    _should_park_orphaned_archive(obj, bucket) {
+        if (!ARCHIVE_STORAGE_CLASSES.includes(obj.storage_class)) return false;
+        if (!bucket) return true;
+        if (obj.storage_class === ARCHIVE.STORAGE_CLASS.DEEP_ARCHIVE &&
+            !bucket.archive_policy?.deep_archive_resource) {
+            return true;
+        }
+        return false;
     }
 
     ////////////////////////

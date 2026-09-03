@@ -269,6 +269,50 @@ mocha.describe('md_store', function() {
             await md_store.update_object_by_id(standard_obj._id, { deleted: new Date() });
         });
 
+        mocha.it('has_any_unreclaimed_objects_in_bucket_with_storage_class() is true only until reclaimed', async function() {
+            const unreclaimed_bucket = md_store.make_md_id();
+            const obj = {
+                _id: md_store.make_md_id(),
+                system: system_id,
+                bucket: unreclaimed_bucket,
+                key: 'unreclaimed_archive_' + Date.now().toString(36),
+                storage_class: 'DEEP_ARCHIVE',
+                deleted: new Date(),
+                create_time: new Date(),
+                content_type: 'application/octet-stream',
+            };
+            await md_store.insert_object(obj);
+            const before = await md_store.has_any_unreclaimed_objects_in_bucket_with_storage_class(
+                unreclaimed_bucket, ['DEEP_ARCHIVE', 'GLACIER']);
+            assert.strictEqual(before, true);
+            await md_store.update_object_by_id(obj._id, { reclaimed: new Date() });
+            const after = await md_store.has_any_unreclaimed_objects_in_bucket_with_storage_class(
+                unreclaimed_bucket, ['DEEP_ARCHIVE', 'GLACIER']);
+            assert.strictEqual(after, false);
+        });
+
+        mocha.it('find_unreclaimed_objects() skips _ids at or before marker', async function() {
+            const objs = [];
+            for (let i = 0; i < 2; i++) {
+                const obj = {
+                    _id: md_store.make_md_id(),
+                    system: system_id,
+                    bucket: bucket_id,
+                    key: 'unreclaimed_marker_' + i + '_' + Date.now().toString(36),
+                    deleted: new Date(),
+                    create_time: new Date(),
+                    content_type: 'application/octet-stream',
+                };
+                await md_store.insert_object(obj);
+                objs.push(obj);
+            }
+            const after_first = await md_store.find_unreclaimed_objects(1000, objs[0]._id);
+            assert.ok(!after_first.some(o => String(o._id) === String(objs[0]._id)),
+                'marker is exclusive: first object must not appear');
+            assert.ok(after_first.some(o => String(o._id) === String(objs[1]._id)),
+                'object after marker must appear');
+        });
+
         mocha.it('count_objects_of_bucket()', async function() {
             return md_store.count_objects_of_bucket(bucket_id);
         });
