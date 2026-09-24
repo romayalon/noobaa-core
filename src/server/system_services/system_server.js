@@ -35,6 +35,7 @@ const account_server = require('./account_server');
 const cluster_server = require('./cluster_server');
 const node_allocator = require('../node_services/node_allocator');
 const stats_collector = require('../bg_services/stats_collector');
+const server_monitor = require('../bg_services/server_monitor');
 const chunk_config_utils = require('../utils/chunk_config_utils');
 const addr_utils = require('../../util/addr_utils');
 const url_utils = require('../../util/url_utils');
@@ -449,35 +450,8 @@ async function _create_owner_account(
     return { auth_token };
 }
 
-async function _configure_system_address(system_id, account_id) {
-    const system_address = (process.env.CONTAINER_PLATFORM === 'KUBERNETES') ?
-        await os_utils.discover_k8s_services() : [];
-
-    // This works because the lists are always sorted, see discover_k8s_services().
-    const { system_address: curr_address } = system_store.data.systems[0] || {};
-    if (curr_address && _.isEqual(curr_address, system_address)) {
-        return;
-    }
-
-    await system_store.make_changes({
-        update: {
-            systems: [{
-                _id: system_id,
-                $set: { system_address }
-            }]
-        }
-    });
-
-    // TODO: need to ask nimrod what activity to dispatch.
-    // if (system_address.length > 0) {
-    //     Dispatcher.instance().activity({
-    //         event: 'conf.system_address',
-    //         level: 'info',
-    //         system: system_id,
-    //         actor: account_id,
-    //         desc: `System addresses was set to `,
-    //     });
-    // }
+async function _configure_system_address(system_id) {
+    await server_monitor.refresh_system_address(system_id);
 }
 
 /**
@@ -841,9 +815,8 @@ function log_client_console(req) {
 }
 
 function _init_system(sysid) {
-    dbg.log0('init system - calling init_cluster and collecting first system stats');
-    return cluster_server.init_cluster()
-        .then(() => stats_collector.collect_system_stats())
+    dbg.log0('init system - collecting first system stats');
+    return stats_collector.collect_system_stats()
         .then(() => Dispatcher.instance().alert(
             'INFO',
             sysid,

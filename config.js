@@ -649,7 +649,7 @@ config.NAMED_DEFAULTS = {
     FORWARDERS_OPTION_FILE: '/etc/noobaa_configured_dns.conf'
 };
 
-config.CLUSTER_HB_INTERVAL = 1 * 60000;
+config.SERVER_MONITOR_INTERVAL = 1 * 60000;
 config.CLUSTER_NODE_MISSING_TIME = 3 * 60000;
 config.SUPERVISOR_PROGRAM_SEPERATOR = '#endprogram';
 
