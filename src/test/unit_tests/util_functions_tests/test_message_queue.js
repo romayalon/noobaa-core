@@ -88,8 +88,9 @@ mocha.describe('message queue', function() {
     mocha.it('postgres queue dead-letters a crashed attempt that used the last try', async function() {
         const id = await exercise_terminal_claim(postgres_queue);
         const res = await db_client.instance().executeSQL(
-            `SELECT last_error, dead_at IS NOT NULL AS dead
-             FROM nb_message_queue WHERE id = $1::bigint`,
+            `SELECT data->>'last_error' AS last_error,
+                    data->'dead_at' IS NOT NULL AS dead
+             FROM nb_message_queue WHERE _id = $1`,
             [id],
         );
         assert.strictEqual(res.rows[0].dead, true);
@@ -312,8 +313,9 @@ async function exercise_terminal_claim(queue) {
         if (!live) throw new Error('expected the next live message');
         assert.notStrictEqual(live.id, crashed.id);
         assert.ok(!live.terminal);
+        const crashed_ids = /** @type {{ object_ids: string[] }} */ (crashed.payload).object_ids;
         const live_ids = /** @type {{ object_ids: string[] }} */ (live.payload).object_ids;
-        assert.deepStrictEqual(live_ids, ['obj-live']);
+        assert.deepStrictEqual(crashed_ids.concat(live_ids).sort(), ['obj-dead', 'obj-live']);
         await queue.ack(live);
         assert.strictEqual(await queue.dequeue(name), null);
         assert.strictEqual(await queue.size(name), 0);

@@ -13,8 +13,8 @@ Three Postgres backends implement the same API. `MESSAGE_QUEUE_TYPE=postgres` is
 | `extend` | Slides that timeout forward while the worker is still processing. |
 | Lock token | Value minted by `dequeue` and required by `ack`, `nack`, and `extend`. A later claim of the same message gets a new token. |
 | Terminal message | A claim that already used its last attempt and then expired. The caller drops it and does not run the batch again. |
-| Dead row | Postgres row with `dead_at` set. `size` and `dequeue` skip it. It is the record of why the batch stopped. |
-| Queue name | Logical queue. One name per background worker. Stored as a column, not as a separate table. |
+| Dead row | Postgres document with `dead_at` set. `size` and `dequeue` skip it. It is the record of why the batch stopped. |
+| Queue name | Logical queue. One name per background worker. Stored on the document. Every queue shares `nb_message_queue`. |
 
 ## Goals
 
@@ -82,24 +82,24 @@ Configuration:
 
 ## Database
 
-The home-grown table is defined in `src/util/message_queue_schema.js`. Connect applies that schema. It is not a `define_collection` document (`_id` plus `data jsonb`): claims need real columns and `FOR UPDATE SKIP LOCKED`.
+The home-grown queue is the collection `nb_message_queue`. Connect creates it with `define_collection` from `src/util/message_queue_schema.js` and `src/util/message_queue_indexes.js`. The row is `_id char(24)` plus `data jsonb`, the same shape as the other collections. `_id` is a Mongo ObjectId. `dequeue` still claims one row with `FOR UPDATE SKIP LOCKED`, because the collection query API cannot express that. If a process still has the earlier typed table (column `id`), connect drops it once and creates the collection.
 
-### Home-grown table `nb_message_queue`
+### Home-grown collection `nb_message_queue`
 
-| Column | Role |
+| Field | Role |
 | --- | --- |
-| `id` | `bigserial` primary key. `dequeue` orders by it. |
+| `_id` | ObjectId primary key. `dequeue` orders by it, so order follows the ObjectId timestamp (one second), then the random bytes. |
 | `queue_name` | Logical queue. |
-| `payload` | `jsonb`. |
+| `payload` | JSON object stored by `enqueue`. |
 | `enqueued_at` | Insert time. |
 | `visible_at` | Not claimable before this time. `nack` pushes it forward. |
-| `locked_until` | Claim deadline. `extend` sets it to `now()` plus the visibility timeout. |
+| `locked_until` | Claim deadline. `extend` sets it to `now()` plus the visibility timeout. Absent when the row is free. |
 | `attempts` | Incremented when a fresh claim is taken. A terminal reclaim does not increment it again. |
-| `lock_token` | Current claim. Cleared on `nack`. |
+| `lock_token` | Current claim. Removed on `nack`. |
 | `last_error` | Last `nack` reason, or `visibility timeout` when the caller drops a terminal claim. |
-| `dead_at` | Set by a dropping `nack`. The ready index omits these rows. |
+| `dead_at` | Set by a dropping `nack`. Absent on a live row. |
 
-Ready index: `(queue_name, visible_at, id) WHERE dead_at IS NULL`. Connect drops dead rows older than 7 days.
+Live index: `(data->>'queue_name', data->>'visible_at')` where `dead_at` is null, from `message_queue_indexes.js`. `define_collection` also adds the unique `_id` index. Connect deletes dead rows older than 7 days.
 
 The home-grown client uses the default NooBaa pool (10 connections), which is the system-store pool. Object metadata uses the separate `md` pool. Queue statements and object-metadata statements still share one Postgres instance, so they share WAL, checkpoints, and autovacuum.
 
@@ -141,25 +141,25 @@ The report columns are ops/s, p50, p99, and for drain and pop the dequeue p50 an
 
 Measured on a local Postgres, 2000 messages, 128-byte payload, concurrency 4, pool 15. The live scenario is 5 pushers and 10 poppers. Each number is the average of two runs with the backend order reversed, so a warm cache does not only favor whichever client ran last.
 
-This run is the success path after `lock_token` and `dead_at` existed: one insert, one locked update, one delete. `extend` and the terminal handoff are not on that path.
+This run is the success path: one insert, one locked update, one delete. `extend` and the terminal handoff are not on that path. The tables below are the jsonb collection. Graphile and pg-boss were measured in the same two runs.
 
 **Fill, then drain**
 
 | Client | Enqueue ops/s | p50 ms | p99 ms | Drain ops/s | p50 ms | p99 ms | Dequeue p50 | Ack p50 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| postgres | 6360 | 0.44 | 6.34 | 2700 | 1.30 | 4.88 | 0.87 | 0.42 |
-| graphile | 4550 | 0.70 | 3.17 | 2900 | 1.23 | 4.28 | 0.88 | 0.33 |
-| pg-boss | 3770 | 0.82 | 4.41 | 3070 | 1.08 | 4.83 | 0.59 | 0.47 |
+| postgres | 7400 | 0.40 | 2.96 | 2200 | 1.76 | 3.98 | 1.23 | 0.51 |
+| graphile | 5280 | 0.66 | 1.99 | 3320 | 1.15 | 2.36 | 0.82 | 0.32 |
+| pg-boss | 4910 | 0.66 | 3.51 | 3760 | 0.93 | 3.59 | 0.50 | 0.41 |
 
 **5 pushers and 10 poppers at the same time**
 
 | Client | Push ops/s | p50 ms | p99 ms | Pop ops/s | p50 ms | p99 ms | Dequeue p50 | Ack p50 |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| postgres | 5350 | 0.73 | 3.53 | 3940 | 2.31 | 10.21 | 1.27 | 0.95 |
-| graphile | 2630 | 1.42 | 7.63 | 2620 | 1.93 | 7.10 | 1.07 | 0.82 |
-| pg-boss | 2330 | 1.89 | 6.73 | 2330 | 2.61 | 9.69 | 1.35 | 1.17 |
+| postgres | 5670 | 0.71 | 3.05 | 4000 | 2.38 | 6.37 | 1.35 | 0.96 |
+| graphile | 3150 | 1.36 | 5.37 | 3140 | 1.83 | 6.86 | 1.05 | 0.77 |
+| pg-boss | 2590 | 1.75 | 5.42 | 2580 | 2.11 | 7.44 | 1.03 | 0.98 |
 
-Postgres enqueue is one insert into a narrow row and one partial index. Graphile `add_job` and pg-boss `send` write extra bookkeeping and maintain more indexes on every insert and delete. Drain is closer together because all three are a `SKIP LOCKED` claim plus a delete. pg-boss had the fastest staged drain and the slowest ack. The Postgres enqueue p99 average is pulled up by one cold run (10.45 ms against 2.23 ms when that client ran last).
+On the earlier typed-column table, the same benchmark reported postgres enqueue 6360 and drain 2700, graphile 4550 and 2900, pg-boss 3770 and 3070. Live postgres was push 5350 and pop 3940, against graphile 2630 / 2620 and pg-boss 2330 / 2330. That machine was slower: Graphile and pg-boss are faster in this run too, so the absolute postgres enqueue gain (6360 to 7400) is the machine, not the document row. Postgres drain went the other way (2700 to 2200) while the other two drains got faster, and dequeue p50 went from 0.87 ms to 1.23 ms. The claim rewrites the whole `data` document. Enqueue is still the fastest of the three. pg-boss still has the fastest staged drain.
 
 The objects reclaimer caps the queue at 8 messages of 100 object ids. At that depth the queue is not the bottleneck. Archive and map deletion are.
 
@@ -222,13 +222,13 @@ sequenceDiagram
     DB-->>C2: message 1 deleted
 ```
 
-Producers only insert. `bigserial`, Graphile `add_job`, and pg-boss `send` each create a new row. Two producers do not update the same queue row.
+Producers only insert. A new ObjectId, Graphile `add_job`, and pg-boss `send` each create a new row. Two producers do not update the same queue row.
 
 Consumers claim different rows. Consumer A's `ack` of token T1 changes nothing once Consumer B holds token T3, and the call throws. The objects reclaimer then tries `nack` with T1, that also throws, and `reclaim_enqueued_at` stays set. Consumer B's `ack` is the one that clears the claim.
 
 While Consumer A is alive, its `extend` loop keeps message 1 invisible, so Consumer B does not take it. The overlap happens after `extend` has stopped for one visibility window.
 
-Queue names keep workers apart. The ready index starts with `queue_name`, so a replication consumer does not lock an objects-reclaimer row.
+Queue names keep workers apart. The live index starts with `queue_name`, so a replication consumer does not lock an objects-reclaimer row.
 
 The reclaimer depth cap is check-then-act: each producer reads `size` and then inserts. Several producers can all pass the cap of 8 in the same moment. That raises depth. It does not corrupt a row.
 
@@ -238,10 +238,10 @@ The reclaimer depth cap is check-then-act: each producer reads `size` and then i
 
 This is the production client. `ack`, `nack`, and `extend` all require `lock_token`.
 
-- Connect runs `CREATE TABLE`, `ALTER TABLE`, `CREATE INDEX`, and `DROP INDEX` on `nb_message_queue`. The first connect after deploy builds the partial index. Later connects still run those statements. They lock the queue table, not the object-metadata tables.
+- Connect runs `define_collection`, which is `CREATE TABLE IF NOT EXISTS` and `CREATE INDEX` on `nb_message_queue`. The first connect after deploy builds the live index. Later connects still run those statements. They lock the queue table, not the object-metadata tables. A database that still has the typed table is dropped on that first connect.
 - Every statement borrows the system-store pool of 10. A tight dequeue loop in a process that also serves system-store RPC shares those connections. The reclaimer is paced (queue depth 8, batch delay 100 ms), so this is quiet today.
 - Dead rows stay until the 7-day delete on connect. A poison batch that is dropped and then scanned again inserts another dead row each cycle, because dropping the queue message releases `reclaim_enqueued_at` and the scanner may enqueue the same objects again.
-- The ready index is `(queue_name, visible_at, id)`. `dequeue` orders by `id`. At depth 8 that mismatch is noise. A deep backlog can sort the ready set instead of walking it in id order.
+- The live index is `(data->>'queue_name', data->>'visible_at')` where `dead_at` is null. `dequeue` orders by `_id` and compares `visible_at` as `timestamptz`, so the text index filters the queue and does not walk the claim in `_id` order. At depth 8 that mismatch is noise.
 - There is no heartbeat column. Liveness is "this process keeps calling `extend`". A stuck process that still extends will hold the batch until it stops.
 
 ### graphile
@@ -290,7 +290,7 @@ pg-boss and Graphile add a pool per process. Losing those connections does not t
 
 ## Tradeoffs
 
-The home-grown table is faster on insert and on the overlapping push/pop run because the row is narrow and the success path maintains one ready index. The cost is that claim lifetime, retry, and dead letters are code we own.
+The home-grown client is the one we ship. Its row is a jsonb document like the other collections, and claim lifetime, retry, and dead letters are code we own. The cost on the benchmark is the drain: the claim updates the whole document, and that path is slower than the typed-column table and slower than Graphile and pg-boss. Enqueue stays ahead of both.
 
 Graphile and pg-boss bring a supervisor, migrations, and more indexes. They lost the multi-process `ack` race until this branch fenced the settle. They still cost extra connections and slower enqueue. They are kept so the benchmark and the stale-ack tests have something to compare against.
 
@@ -312,7 +312,7 @@ Graphile and pg-boss bring a supervisor, migrations, and more indexes. They lost
 
 ## Effort
 
-The client, the three backends, the reclaimer wiring, the benchmark, and the unit tests are on branch `romy-objects-reclaimer-mq`. Follow-up work, if other background workers move onto this table, is a dedicated pool, a ready index that matches `ORDER BY id`, and a decision about whether Graphile and pg-boss stay once the comparison is done.
+The client, the three backends, the reclaimer wiring, the benchmark, and the unit tests are on branch `romy-objects-reclaimer-mq`. Follow-up work, if other background workers move onto this collection, is a dedicated pool, a claim index that matches `ORDER BY _id`, and a decision about whether Graphile and pg-boss stay once the comparison is done.
 
 ## Open questions
 
