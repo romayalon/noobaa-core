@@ -277,11 +277,9 @@ config.DB_TYPE = /** @type {nb.DBType} */ (process.env.DB_TYPE || 'postgres');
 // "graphile" uses graphile-worker on that same database.
 // "pgboss" uses pg-boss on that same database.
 config.MESSAGE_QUEUE_TYPE = /** @type {nb.MessageQueueType} */ (process.env.MESSAGE_QUEUE_TYPE || 'postgres');
-// Defaults for every queue in this process.
-config.MESSAGE_QUEUE_DEFAULT_VISIBILITY_MS = parseInt(process.env.MESSAGE_QUEUE_DEFAULT_VISIBILITY_MS, 10) || (10 * 60 * 1000);
-config.MESSAGE_QUEUE_DEFAULT_MAX_ATTEMPTS = parseInt(process.env.MESSAGE_QUEUE_DEFAULT_MAX_ATTEMPTS, 10) || 5;
-config.MESSAGE_QUEUE_DEFAULT_RETRY_DELAY_MS = parseInt(process.env.MESSAGE_QUEUE_DEFAULT_RETRY_DELAY_MS, 10) || 1000;
-config.MESSAGE_QUEUE_GRAPHILE_POOL_MAX = parseInt(process.env.MESSAGE_QUEUE_GRAPHILE_POOL_MAX, 10) || 4;
+config.MESSAGE_QUEUE_VISIBILITY_MS = parseInt(process.env.MESSAGE_QUEUE_VISIBILITY_MS, 10) || (10 * 60 * 1000);
+config.MESSAGE_QUEUE_MAX_ATTEMPTS = parseInt(process.env.MESSAGE_QUEUE_MAX_ATTEMPTS, 10) || 5;
+config.MESSAGE_QUEUE_RETRY_DELAY_MS = parseInt(process.env.MESSAGE_QUEUE_RETRY_DELAY_MS, 10) || 1000;
 config.MESSAGE_QUEUE_PGBOSS_POOL_MAX = parseInt(process.env.MESSAGE_QUEUE_PGBOSS_POOL_MAX, 10) || 4;
 
 config.POSTGRES_DEFAULT_MAX_CLIENTS = 10;
