@@ -1,5 +1,5 @@
 /* Copyright (C) 2016 NooBaa */
-/*eslint max-lines: ["error", 3000]*/
+/*eslint max-lines: ["error", 3100]*/
 'use strict';
 
 /** @typedef {typeof import('../../sdk/nb')} nb */
@@ -941,15 +941,48 @@ class MDStore {
         return return_results ? result.rows : [];
     }
 
-    async find_unreclaimed_objects(limit) {
-        const results = await this._objects.find({
+    /**
+     * @param {number} limit
+     * @param {{ reclaim_enqueued_before?: Date }} [options]
+     * When reclaim_enqueued_before is set, skip objects claimed for a queue
+     * message at or after that time. Older claims are eligible again.
+     */
+    async find_unreclaimed_objects(limit, options = {}) {
+        const results = await this._objects.find(with_reclaim_enqueue_filter({
             deleted: { $exists: true },
             reclaimed: null
-        }, {
+        }, options.reclaim_enqueued_before), {
             limit: Math.min(limit, 1000),
             preferred_pool: 'read_only',
         });
         return results;
+    }
+
+    /**
+     * Mark objects as sitting in a reclaim queue message. Only ids that were
+     * still unclaimed (or whose claim is older than stale_before) are returned,
+     * so two producers cannot enqueue the same object.
+     * @param {nb.ID[]} object_ids
+     * @param {Date} stale_before
+     * @returns {Promise<string[]>}
+     */
+    async claim_objects_for_reclaim(object_ids, stale_before) {
+        if (!object_ids || !object_ids.length) return [];
+        const ids = object_ids.map(id => String(id));
+        const result = await db_client.instance().executeSQL(
+            `UPDATE ${this._objects.name}
+             SET data = jsonb_set(data, '{reclaim_enqueued_at}', to_jsonb($1::text), true)
+             WHERE btrim(_id::text) = ANY($2::text[])
+               AND (
+                 data->'reclaim_enqueued_at' IS NULL
+                 OR data->'reclaim_enqueued_at' = 'null'::jsonb
+                 OR (data->>'reclaim_enqueued_at')::timestamptz < $3::timestamptz
+               )
+             RETURNING _id`,
+            [new Date().toISOString(), ids, new Date(stale_before).toISOString()],
+            { preferred_pool: this._postgres_pool },
+        );
+        return result.rows.map(row => String(row._id).trim());
     }
 
     /**
@@ -976,16 +1009,17 @@ class MDStore {
      * Live objects whose temporary restore has expired (STANDARD restore copy).
      * @param {number} limit
      * @param {Date} [now]
+     * @param {{ reclaim_enqueued_before?: Date }} [options]
      * @returns {Promise<nb.ObjectMD[]>}
      */
-    async find_expired_restore_objects(limit, now = new Date()) {
-        const results = await this._objects.find({
+    async find_expired_restore_objects(limit, now = new Date(), options = {}) {
+        const results = await this._objects.find(with_reclaim_enqueue_filter({
             deleted: null,
             upload_started: null,
             restore_status: { $exists: true },
             'restore_status.ongoing': false,
             'restore_status.expiry_time': { $lte: now },
-        }, {
+        }, options.reclaim_enqueued_before), {
             limit: limit ?? 1000,
             preferred_pool: 'read_only',
         });
@@ -996,10 +1030,11 @@ class MDStore {
      * Live objects with transition DONE and unreclaimed source data
      * (eligible for local-copy purge).
      * @param {number} limit
+     * @param {{ reclaim_enqueued_before?: Date }} [options]
      * @returns {Promise<nb.ObjectMD[]>}
      */
-    async find_objects_with_transition_done_unreclaimed_source(limit) {
-        const results = await this._objects.find({
+    async find_objects_with_transition_done_unreclaimed_source(limit, options = {}) {
+        const results = await this._objects.find(with_reclaim_enqueue_filter({
             deleted: null,
             upload_started: null,
             restore_status: null,
@@ -1008,7 +1043,7 @@ class MDStore {
             'transition_info.source_info': { $exists: true },
             'transition_info.source_info.reclaimed': null,
             'transition_info.transition_end_ts': { $exists: true },
-        }, {
+        }, options.reclaim_enqueued_before), {
             limit: limit ?? 1000,
             preferred_pool: 'read_only',
         });
@@ -2963,3 +2998,18 @@ function make_md_id(id_str) {
 // EXPORTS
 exports.MDStore = MDStore;
 exports.make_md_id = make_md_id;
+
+/**
+ * @param {object} query
+ * @param {Date} [reclaim_enqueued_before]
+ */
+function with_reclaim_enqueue_filter(query, reclaim_enqueued_before) {
+    if (!reclaim_enqueued_before) return query;
+    return {
+        ...query,
+        $or: [
+            { reclaim_enqueued_at: null },
+            { reclaim_enqueued_at: { $lt: reclaim_enqueued_before } },
+        ],
+    };
+}

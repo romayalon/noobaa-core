@@ -21,6 +21,7 @@ const lifecycle = require('./bg_services/lifecycle');
 const cluster_hb = require('./bg_services/cluster_hb');
 const server_rpc = require('./server_rpc');
 const db_client = require('../util/db_client');
+const message_queue_client = require('../util/message_queue_client');
 const { BucketsReclaimer } = require('./bg_services/buckets_reclaimer');
 const { ObjectsReclaimer } = require('./bg_services/objects_reclaimer');
 const { RestoreWorker } = require('./bg_services/restore_worker');
@@ -248,8 +249,9 @@ async function main() {
         dbg_conf.core.map(module => dbg.set_module_level(dbg_conf.level, module));
     }
 
+    await db_client.instance().connect();
     await Promise.all([
-        db_client.instance().connect(),
+        message_queue_client.instance().connect(),
         register_rpc(),
     ]);
 

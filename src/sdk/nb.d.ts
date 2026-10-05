@@ -427,6 +427,8 @@ interface TargetDataInfo {
 interface ObjectMD {
     _id: ID;
     deleted?: Date;
+    reclaimed?: Date;
+    reclaim_enqueued_at?: Date;
     bucket: ID;
     system: ID;
     key: string;

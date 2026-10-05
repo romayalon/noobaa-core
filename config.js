@@ -450,6 +450,12 @@ config.OBJECT_RECLAIMER_TRANSITION_SOURCE_BATCH_SIZE = 100;
 config.OBJECT_RECLAIMER_BATCH_DELAY = 100;
 config.OBJECT_RECLAIMER_ERROR_DELAY = 3000;
 config.OBJECT_RECLAIMER_ABORT_CONCURRENCY = 100;
+// How many object ids one queue message carries. Workers dequeue a message
+// and reclaim that batch, so several BG workers can drain the queue at once.
+config.OBJECT_RECLAIMER_TASKS_PER_MESSAGE = parseInt(process.env.OBJECT_RECLAIMER_TASKS_PER_MESSAGE, 10) || 100;
+config.OBJECT_RECLAIMER_MAX_QUEUED_MESSAGES = parseInt(process.env.OBJECT_RECLAIMER_MAX_QUEUED_MESSAGES, 10) || 8;
+config.OBJECT_RECLAIMER_ENQUEUE_STALE_MS = parseInt(process.env.OBJECT_RECLAIMER_ENQUEUE_STALE_MS, 10) || (60 * 60 * 1000);
+config.OBJECT_RECLAIMER_QUEUE_NAME = 'objects_reclaimer';
 
 
 //////////////////
