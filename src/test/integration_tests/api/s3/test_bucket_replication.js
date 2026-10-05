@@ -14,6 +14,8 @@ const { S3 } = require('@aws-sdk/client-s3');
 const http = require('http');
 const cloud_utils = require('../../../../util/cloud_utils');
 const { ReplicationScanner } = require('../../../../server/bg_services/replication_scanner');
+const replication_executor = require('../../../../server/bg_services/replication_executor');
+const { drain_task } = require('../../../../server/bg_services/bg_task_executor');
 const { get_object } = require('../../../system_tests/test_utils');
 
 const db_client = require('../../../../util/db_client').instance();
@@ -346,6 +348,7 @@ mocha.describe('replication configuration bg worker tests', function() {
             name: 'replication_scanner',
             client: rpc_client
         });
+        run_queued_replication_on_scan(scanner);
     });
 
     mocha.after('delete buckets', async function() {
@@ -642,6 +645,7 @@ mocha.describe('Replication pagination test', function() {
             client: rpc_client
         });
         scanner.noobaa_connection = s3_owner; // needed when not calling batch
+        run_queued_replication_on_scan(scanner);
     });
 
     mocha.after('delete buckets', async function() {
@@ -670,3 +674,21 @@ mocha.describe('Replication pagination test', function() {
         await _list_objects_and_wait(s3_owner, target_bucket, obj_amount);
     });
 });
+
+/**
+ * Scan enqueues replicate tasks. Drain them in this process so the test still
+ * observes the copies that execute used to perform inside run_batch.
+ * @param {ReplicationScanner} scanner
+ */
+function run_queued_replication_on_scan(scanner) {
+    const run_batch = scanner.run_batch.bind(scanner);
+    scanner.run_batch = async () => {
+        const delay = await run_batch();
+        await drain_task({
+            name: 'replicate',
+            queue: config.REPLICATION_QUEUE_NAME,
+            execute: payload => replication_executor.execute_payload(payload, { replication: scanner }),
+        }, scanner.message_queue);
+        return delay;
+    };
+}

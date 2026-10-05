@@ -11,6 +11,7 @@ const semaphore = require('../../util/semaphore');
 const replication_store = require('../system_services/replication_store').instance();
 const cloud_utils = require('../../util/cloud_utils');
 const replication_utils = require('../utils/replication_utils');
+const replication_executor = require('./replication_executor');
 const { BucketDiff } = require('../../server/utils/bucket_diff');
 
 class ReplicationScanner {
@@ -19,11 +20,15 @@ class ReplicationScanner {
      * @param {{
      *   name: string;
      *   client: nb.APIClient;
+     *   message_queue?: nb.MessageQueueClient | null;
      * }} params
      */
-    constructor({ name, client }) {
+    constructor({ name, client, message_queue = null }) {
         this.name = name;
         this.client = client;
+        this.message_queue = message_queue;
+        // The executor process sets this false so execute does not rewrite the scan cursor.
+        this.commit_scan_status = true;
         this.scanner_semaphore = new semaphore.Semaphore(config.REPLICATION_SEMAPHORE_CAP, {
             timeout: config.REPLICATION_SEMAPHORE_TIMEOUT,
             timeout_error_code: 'REPLICATION_ITEM_TIMEOUT',
@@ -40,7 +45,7 @@ class ReplicationScanner {
                 this.noobaa_connection = cloud_utils.set_noobaa_s3_connection(system_store.data.systems[0]);
             }
             const { had_work, had_errors } = await this.scan();
-            // Retry soon when this batch copied objects or a rule failed. An idle batch waits the full delay.
+            // Retry soon when this batch queued copies or a rule failed. An idle batch waits the full delay.
             return (had_work || had_errors) ? config.BUCKET_REPLICATOR_BUSY_DELAY : config.BUCKET_REPLICATOR_DELAY;
         } catch (err) {
             dbg.error('replication_scanner:', err, err.stack);
@@ -88,8 +93,8 @@ class ReplicationScanner {
     }
 
     /**
-     * scan_rule diffs one rule and executes the copy.
-     * @param {{ replication_id: string, rule: { rule_id: string } }} replication_id_and_rule
+     * scan_rule diffs one rule and enqueues the copy.
+     * @param {{ replication_id: string, rule: { rule_id: string, destination_bucket: * } }} replication_id_and_rule
      * @param {{ had_work: boolean, had_errors: boolean }} result
      */
     async scan_rule(replication_id_and_rule, result) {
@@ -105,13 +110,30 @@ class ReplicationScanner {
 
         dbg.log1('scan_rule:: keys_sizes_map_to_copy:', keys_diff_map, 'src_cont_token:', src_cont_token, 'dst_cont_token', dst_cont_token);
 
-        // TODO: instead of calling execute, we should insert to the queue and process it in the background by the consumers
-        const had_copy_errors = await this.execute(
-            src_bucket, dst_bucket, keys_diff_map, replication_id, rule.rule_id, status,
-            { src_cont_token, dst_cont_token });
-        if (had_copy_errors) result.had_errors = true;
+        // MESSAGE_QUEUE_TYPE=none stores nothing, so keep copying in this process.
+        if (config.MESSAGE_QUEUE_TYPE === 'none') {
+            const had_copy_errors = await this.execute(
+                src_bucket, dst_bucket, keys_diff_map, replication_id, rule.rule_id, status,
+                { src_cont_token, dst_cont_token });
+            if (had_copy_errors) result.had_errors = true;
+        } else {
+            // The executor process dequeues this task and calls execute.
+            // Store the cursor now so the next scan reads the next page while the copy is still queued.
+            // execute on that process does not write the cursor, so a later page cannot be rewound.
+            await replication_executor.enqueue(this.message_queue, {
+                kind: 'scan',
+                replication_id: replication_executor.id_string(replication_id),
+                rule_id: rule.rule_id,
+                destination_bucket_id: replication_executor.id_string(rule.destination_bucket),
+                keys_diff_map,
+                status,
+                src_cont_token,
+                dst_cont_token,
+            });
+            await commit_scan_cursor(replication_id, rule.rule_id, status, { src_cont_token, dst_cont_token });
+        }
 
-        // This rule copied objects or has more pages to scan.
+        // This rule has objects to copy or more pages to scan.
         if (Object.keys(keys_diff_map).length || src_cont_token) result.had_work = true;
     }
 
@@ -229,9 +251,11 @@ class ReplicationScanner {
             replication_utils.update_replication_target_status(replication_id, src_bucket.name, dst_bucket.name, true);
         }
 
-        // always advance the src cont token, if failures happened - they will eventually will be copied
-        const new_status = { ...status, last_cycle_end: Date.now(), src_cont_token, dst_cont_token };
-        await replication_store.update_replication_status_by_id(replication_id, rule_id, new_status);
+        // Direct execute callers still advance the cursor. The queued path stores it in scan_rule
+        // and sets commit_scan_status false so an older page cannot rewind a newer one.
+        if (this.commit_scan_status) {
+            await commit_scan_cursor(replication_id, rule_id, status, { src_cont_token, dst_cont_token });
+        }
 
         // update the prometheus metrics only if we have diff
         if (Object.keys(keys_diff_map).length) {
@@ -245,3 +269,17 @@ class ReplicationScanner {
 }
 
 exports.ReplicationScanner = ReplicationScanner;
+
+/**
+ * @param {string} replication_id
+ * @param {string} rule_id
+ * @param {{ last_cycle_start: number }} status
+ * @param {{ src_cont_token: string, dst_cont_token: string }} cont_tokens
+ * @returns {Promise<void>}
+ */
+async function commit_scan_cursor(replication_id, rule_id, status, cont_tokens) {
+    const { src_cont_token, dst_cont_token } = cont_tokens;
+    // Always advance the src cont token. Copy failures are retried from the queued task.
+    const new_status = { ...status, last_cycle_end: Date.now(), src_cont_token, dst_cont_token };
+    await replication_store.update_replication_status_by_id(replication_id, rule_id, new_status);
+}

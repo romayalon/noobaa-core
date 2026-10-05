@@ -11,6 +11,7 @@ const replication_store = require('../system_services/replication_store').instan
 const cloud_utils = require('../../util/cloud_utils');
 const log_parser = require('./replication_log_parser');
 const replication_utils = require('../utils/replication_utils');
+const replication_executor = require('./replication_executor');
 const { BucketDiff } = require('../../server/utils/bucket_diff');
 
 class LogReplicationScanner {
@@ -19,11 +20,13 @@ class LogReplicationScanner {
      * @param {{
      *   name: string;
      *   client: nb.APIClient;
+     *   message_queue?: nb.MessageQueueClient | null;
      * }} params
      */
-    constructor({ name, client }) {
+    constructor({ name, client, message_queue = null }) {
         this.name = name;
         this.client = client;
+        this.message_queue = message_queue;
         this._scanner_sem = new semaphore.Semaphore(config.REPLICATION_SEMAPHORE_CAP, {
             timeout: config.REPLICATION_SEMAPHORE_TIMEOUT,
             timeout_error_code: 'LOG_REPLICATION_ITEM_TIMEOUT',
@@ -40,7 +43,7 @@ class LogReplicationScanner {
                 this.noobaa_connection = cloud_utils.set_noobaa_s3_connection(system_store.data.systems[0]);
             }
             const { had_work, had_errors } = await this.scan();
-            // Retry soon when this batch copied objects or a rule failed. An idle batch waits the full delay.
+            // Retry soon when this batch queued copies or a rule failed. An idle batch waits the full delay.
             return (had_work || had_errors) ? config.BUCKET_LOG_REPLICATOR_BUSY_DELAY : config.BUCKET_LOG_REPLICATOR_DELAY;
         } catch (err) {
             dbg.error('log_replication_scanner:', err);
@@ -62,7 +65,7 @@ class LogReplicationScanner {
     }
 
     /**
-     * scan scans all replication policies and rules and executes the replication for each rule.
+     * scan scans all replication policies and rules and enqueues the replication for each rule.
      * @returns {Promise<{ had_work: boolean, had_errors: boolean }>} had_work is true if the last batch worked, had_errors is true if there were errors
      */
     async scan() {
@@ -98,7 +101,7 @@ class LogReplicationScanner {
     }
 
     /**
-     * scan_rule validates one rule, reads its log candidates, and executes the replication.
+     * scan_rule validates one rule, reads its log candidates, and enqueues the replication.
      * @param {{ _id: string, rules: Array<object> }} repl
      * @param {{ rule_id: string, destination_bucket: *, sync_versions?: boolean, sync_deletions?: boolean }} rule
      * @param {{ had_work: boolean, had_errors: boolean }} result
@@ -123,9 +126,28 @@ class LogReplicationScanner {
         // Check the destination after the log page is loaded so failure metrics use the candidate count.
         if (!await this.validate_dst(src_bucket, dst_bucket, replication_id, rule, total)) return result;
 
-        const { had_copy_errors } = await this.execute(
-            src_bucket, dst_bucket, candidates, sync_versions, sync_deletions, rule_id, replication_id);
-        if (had_copy_errors) result.had_errors = true;
+        // MESSAGE_QUEUE_TYPE=none stores nothing, so keep copying in this process.
+        if (config.MESSAGE_QUEUE_TYPE === 'none') {
+            const { had_copy_errors } = await this.execute(
+                src_bucket, dst_bucket, candidates, sync_versions, sync_deletions, rule_id, replication_id);
+            if (had_copy_errors) result.had_errors = true;
+            return result;
+        }
+
+        // The executor process dequeues this task and calls execute.
+        // Store the log marker now so the next scan reads the next page while this page is still queued.
+        await replication_executor.enqueue(this.message_queue, {
+            kind: 'log',
+            replication_id: replication_executor.id_string(replication_id),
+            rule_id,
+            destination_bucket_id: replication_executor.id_string(rule.destination_bucket),
+            items: candidates.items,
+            sync_versions,
+            sync_deletions,
+        });
+        if (typeof candidates.done === 'function') {
+            await candidates.done();
+        }
         return result;
     }
 

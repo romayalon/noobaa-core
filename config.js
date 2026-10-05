@@ -273,6 +273,18 @@ config.ROOT_KEY_MOUNT = '/etc/noobaa-server/root_keys';
 
 config.DB_TYPE = /** @type {nb.DBType} */ (process.env.DB_TYPE || 'postgres');
 
+// Message queue backend. "postgres" is a table on the NooBaa DB.
+// "graphile" uses graphile-worker on that same database.
+// "pgboss" uses pg-boss on that same database.
+// "none" accepts calls and stores nothing.
+// The three DEFAULT_* values apply to every queue in this process.
+config.MESSAGE_QUEUE_TYPE = /** @type {nb.MessageQueueType} */ (process.env.MESSAGE_QUEUE_TYPE || 'postgres');
+config.MESSAGE_QUEUE_DEFAULT_VISIBILITY_MS = parseInt(process.env.MESSAGE_QUEUE_DEFAULT_VISIBILITY_MS, 10) || (10 * 60 * 1000);
+config.MESSAGE_QUEUE_DEFAULT_MAX_ATTEMPTS = parseInt(process.env.MESSAGE_QUEUE_DEFAULT_MAX_ATTEMPTS, 10) || 5;
+config.MESSAGE_QUEUE_DEFAULT_RETRY_DELAY_MS = parseInt(process.env.MESSAGE_QUEUE_DEFAULT_RETRY_DELAY_MS, 10) || 1000;
+config.MESSAGE_QUEUE_GRAPHILE_POOL_MAX = parseInt(process.env.MESSAGE_QUEUE_GRAPHILE_POOL_MAX, 10) || 4;
+config.MESSAGE_QUEUE_PGBOSS_POOL_MAX = parseInt(process.env.MESSAGE_QUEUE_PGBOSS_POOL_MAX, 10) || 4;
+
 config.POSTGRES_DEFAULT_MAX_CLIENTS = 10;
 config.POSTGRES_MD_MAX_CLIENTS = (process.env.LOCAL_MD_SERVER === 'true') ? 70 : 10;
 config.POSTGRES_CONNECTION_TIMEOUT_MS = 10 * 1000;
@@ -806,6 +818,15 @@ config.BUCKET_DIFF_FOR_REPLICATION = true;
 config.BUCKET_REPLICATION_SKIP_METADATA_CHECK_NON_VERSIONED = false;
 config.LOG_REPLICATION_MAX_CONCURRENT_POLICIES = 10;
 config.LOG_REPLICATION_MAX_CONCURRENT_RULES = 10;
+// Task type and queue name for replication. Scanners enqueue here.
+// bg_workers dequeues this queue and calls execute. See BG_WORKERS_MODE.
+config.REPLICATION_QUEUE_NAME = 'replicate';
+config.BG_EXECUTOR_BATCH_DELAY = 100;
+config.BG_EXECUTOR_EMPTY_DELAY = 1000;
+config.BG_EXECUTOR_ERROR_DELAY = 3000;
+// default: scanners and the other background workers, and the dequeue loop.
+// executor: dequeue loop only. Does not scan and does not bind the bg port.
+config.BG_WORKERS_MODE = process.env.BG_WORKERS_MODE || 'default';
 
 ////////////////////////////////
 //      BUCKET LOGGING        //
