@@ -762,6 +762,60 @@ interface APIClient {
 
 type DBType = 'postgres' | 'none';
 
+type MessageQueueType = 'postgres' | 'graphile' | 'pgboss' | 'none';
+
+/**
+ * One claimed message. ack, nack, and extend take this whole object.
+ * The id identifies the row. The claim fields stop a worker whose lock
+ * expired from settling the next worker's claim.
+ */
+interface QueueMessage {
+    /** Row id. The same id comes back when this message is claimed again. */
+    id: string;
+    /** Queue name passed to enqueue and dequeue. */
+    queue: string;
+    /** Plain JSON object stored by enqueue. */
+    payload: object;
+    /**
+     * Claims taken so far. The first dequeue returns 1.
+     * Postgres and Graphile leave this unchanged when the lock had expired
+     * and the message had already used its last attempt. pg-boss can return
+     * one past MESSAGE_QUEUE_DEFAULT_MAX_ATTEMPTS after a crash on that last attempt.
+     */
+    attempts: number;
+    /**
+     * Postgres and Graphile. A new value is issued on every dequeue.
+     * ack, nack, and extend update the row only while this token still matches.
+     */
+    lock_token?: string;
+    /**
+     * pg-boss retryCount from the fetch that produced this claim.
+     * ack, nack, and extend send { id, retryCount } so a late settle misses
+     * once pg-boss has moved to the next attempt.
+     */
+    retry_count?: number;
+    /**
+     * True when this claim already used the last attempt and the visibility
+     * lock had expired. Do not run payload. nack the message so it is dropped.
+     */
+    terminal?: boolean;
+}
+
+interface MessageQueueNackResult {
+    dropped: boolean;
+}
+
+interface MessageQueueClient {
+    connect(): Promise<void>;
+    disconnect(): Promise<void>;
+    enqueue(queue: string, payload: object): Promise<string>;
+    dequeue(queue: string): Promise<QueueMessage | null>;
+    size(queue: string): Promise<number>;
+    ack(message: QueueMessage): Promise<void>;
+    nack(message: QueueMessage, reason?: string): Promise<MessageQueueNackResult>;
+    extend(message: QueueMessage): Promise<boolean>;
+}
+
 interface DBClient {
     operators: Set<string>;
 
