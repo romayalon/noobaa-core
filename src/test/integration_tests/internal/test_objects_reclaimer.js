@@ -269,6 +269,28 @@ mocha.describe('ObjectsReclaimer expire paths', function() {
             ].includes(delay), `unexpected delay ${delay}`);
         });
 
+        mocha.it('run_batch reclaims an expired restore through the message queue', async function() {
+            this.timeout(120000); // eslint-disable-line no-invalid-this
+            const obj = await upload_and_patch({
+                storage_class: CONSTANTS.ARCHIVE.STORAGE_CLASS.DEEP_ARCHIVE,
+                restore_status: {
+                    ongoing: false,
+                    expiry_time: new Date(Date.now() - 60_000),
+                },
+            });
+
+            for (let i = 0; i < 100; i++) {
+                const current = await MDStore.instance().find_object_by_id(obj._id);
+                if (!current.restore_status) break;
+                const delay = await reclaimer.run_batch();
+                if (delay === config.OBJECT_RECLAIMER_EMPTY_DELAY) break;
+            }
+
+            const after = await assert_object_not_deleted(obj._id);
+            assert.ok(!after.restore_status, 'restore_status should be unset after queued reclaim');
+            assert.ok(!after.reclaim_enqueued_at, 'queued reclaim should clear the enqueue claim');
+        });
+
         mocha.it('_next_delay prefers errors over work over empty', function() {
             // Use distinct stub delays so preference is proven even if config values coincide.
             const orig = {
