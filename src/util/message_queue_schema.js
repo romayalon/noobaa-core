@@ -12,6 +12,8 @@ module.exports = {
     ],
     properties: {
         _id: { objectid: true },
+        // Which worker should run this message. The payload stays the task body.
+        kind: { type: 'string' },
         // JSON object passed to enqueue. Shape belongs to the worker.
         payload: {
             type: 'object',

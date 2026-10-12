@@ -17,6 +17,7 @@ jest.mock('../../../util/debug_module', () => () => ({
 }));
 
 const SensitiveString = require('../../../util/sensitive_string');
+const config = require('../../../../config');
 const { NooBaaCoreReport } = require('../../../server/analytic_services/prometheus_reports/noobaa_core_report');
 
 const mock_get_all_replication_configs = jest.fn();
@@ -55,7 +56,6 @@ const probe = (r, s, d, ok = true) => u.update_replication_target_status(r, s, d
 const reconcile = () => u.reconcile_replication_target_status();
 const gauge = () => Object.values(g().hashMap).find(e => e.labels?.target_bucket === DST)?.value;
 const copy_sem = { surround_count: async (_n, fn) => fn() };
-const copy_client = { replication: { copy_objects: jest.fn() } };
 const copy_keys = { key1: [{ Size: 1 }] };
 
 const seed = (rid, dsts, o = {}) => {
@@ -149,9 +149,14 @@ describe('NooBaa_replication_target_status', () => {
     });
 
     describe('scan reachability after diff', () => {
+        /** @type {jest.SpyInstance} */
+        let copy_page;
         beforeEach(() => {
             mock_store.systems = [{ _id: 'sys', owner: { _id: 'owner' } }];
-            copy_client.replication.copy_objects.mockReset();
+            copy_page = jest.spyOn(u, 'copy_objects_page');
+        });
+        afterEach(() => {
+            copy_page.mockRestore();
         });
 
         it.each([
@@ -166,23 +171,37 @@ describe('NooBaa_replication_target_status', () => {
                 0,
             ],
         ])('%s', async (_desc, res, want) => {
-            copy_client.replication.copy_objects.mockResolvedValue(res);
-            await u.copy_objects(copy_sem, copy_client, 'MIX', SRC, DST, copy_keys, R1);
+            copy_page.mockResolvedValue(res);
+            await u.copy_objects(copy_sem, 'MIX', SRC, DST, copy_keys, R1);
             expect(gauge()).toBe(want);
+        });
+
+        it('sends copy requests to the endpoint when the queue type is none', async () => {
+            config.MESSAGE_QUEUE_TYPE = 'none';
+            const via_endpoint = jest.spyOn(u, 'copy_objects_via_endpoint').mockResolvedValue({
+                num_of_objects: 1,
+                size_of_objects: 1,
+            });
+            await u.copy_objects(copy_sem, 'MIX', SRC, DST, copy_keys, R1);
+            expect(via_endpoint).toHaveBeenCalled();
+            expect(copy_page).not.toHaveBeenCalled();
+            expect(gauge()).toBe(1);
+            delete config.MESSAGE_QUEUE_TYPE;
+            via_endpoint.mockRestore();
         });
 
         it('does not update replication_target_status when copy_objects is called with an empty keys_diff_map', async () => {
             probe(R1, SRC, DST, false);
-            await u.copy_objects(copy_sem, copy_client, 'MIX', SRC, DST, {}, R1);
-            expect(copy_client.replication.copy_objects).not.toHaveBeenCalled();
+            await u.copy_objects(copy_sem, 'MIX', SRC, DST, {}, R1);
+            expect(copy_page).not.toHaveBeenCalled();
             expect(gauge()).toBe(0);
         });
 
         it('keeps replication_target_status at 0 after failed copy and sets 1 only when scan has no keys to copy', async () => {
-            copy_client.replication.copy_objects.mockResolvedValue({ num_of_objects: 0, size_of_objects: 0 });
-            await u.copy_objects(copy_sem, copy_client, 'MIX', SRC, DST, copy_keys, R1);
+            copy_page.mockResolvedValue({ num_of_objects: 0, size_of_objects: 0 });
+            await u.copy_objects(copy_sem, 'MIX', SRC, DST, copy_keys, R1);
             expect(gauge()).toBe(0);
-            await u.copy_objects(copy_sem, copy_client, 'MIX', SRC, DST, {}, R1);
+            await u.copy_objects(copy_sem, 'MIX', SRC, DST, {}, R1);
             expect(gauge()).toBe(0);
             probe(R1, SRC, DST, true);
             expect(gauge()).toBe(1);

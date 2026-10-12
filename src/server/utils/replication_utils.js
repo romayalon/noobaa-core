@@ -8,6 +8,12 @@ const system_store = require('../system_services/system_store').get_instance();
 const replication_store = require('../system_services/replication_store').instance();
 const prom_reporting = require('../analytic_services/prometheus_reporting');
 const auth_server = require('../common_services/auth_server');
+const config = require('../../../config');
+
+const REPLICATION_TASK_KIND = Object.freeze({
+    SCAN: 'scan',
+    LOG: 'log',
+});
 
 const PARTIAL_SINGLE_BUCKET_REPLICATION_DEFAULTS = {
     replication_id: '',
@@ -252,31 +258,24 @@ function get_copy_type() {
     return 'MIX';
 }
 
-async function copy_objects(scanner_semaphore, client, copy_type, src_bucket_name, dst_bucket_name, keys_diff_map, replication_id) {
+async function copy_objects(scanner_semaphore, copy_type, src_bucket_name, dst_bucket_name, keys_diff_map, replication_id) {
     const keys_length = Object.keys(keys_diff_map || {});
     if (!keys_length.length) {
         return { num_of_objects: 0, size_of_objects: 0 };
     }
+    if (copy_type !== 'MIX') throw new Error('Invalid copy type');
 
     let res;
     try {
         res = await scanner_semaphore.surround_count(keys_length, //We will do key by key even when a key have more then one version
             async () => {
                 try {
-                    //calling copy_objects in the replication server
-                    const res1 = await client.replication.copy_objects({
-                        copy_type,
-                        src_bucket_name,
-                        dst_bucket_name,
-                        keys_diff_map
-                    }, {
-                        auth_token: auth_server.make_auth_token({
-                            system_id: system_store.data.systems[0]._id,
-                            account_id: system_store.data.systems[0].owner._id,
-                            role: 'admin'
-                        })
-                    });
-                    return res1;
+                    // Queue none sends S3 copy requests to the endpoint.
+                    // An executor copies the page in its own process.
+                    const copy_page = config.MESSAGE_QUEUE_TYPE === 'none' ?
+                        exports.copy_objects_via_endpoint :
+                        exports.copy_objects_page;
+                    return await copy_page(src_bucket_name, dst_bucket_name, keys_diff_map);
                 } catch (err) {
                     // no need to do retries, eventually the object will be uploaded
                     // TODO: serious error codes with metrics (auth_failed, storage not exist etc)
@@ -329,7 +328,167 @@ async function delete_objects(scanner_semaphore, client, bucket_name, keys) {
     }
 }
 
+/**
+ * Copy one diff page by sending S3 CopyObject requests to the endpoint.
+ * @param {any} src_bucket_name
+ * @param {any} dst_bucket_name
+ * @param {nb.BucketDiffKeysDiff | {}} keys_diff_map
+ * @returns {Promise<{ num_of_objects: number, size_of_objects: number }>}
+ */
+async function copy_objects_via_endpoint(src_bucket_name, dst_bucket_name, keys_diff_map) {
+    const copy_res = { num_of_objects: 0, size_of_objects: 0 };
+    const keys = Object.keys(keys_diff_map || {});
+    if (!keys.length) return copy_res;
+
+    const P = require('../../util/promise');
+    const cloud_utils = require('../../util/cloud_utils');
+    const noobaa_con = cloud_utils.set_noobaa_s3_connection(system_store.data.systems[0]);
+    if (!noobaa_con) throw new Error('noobaa endpoint connection is not started yet...');
+    const src_bucket = plain_bucket_name(src_bucket_name);
+    const dst_bucket = plain_bucket_name(dst_bucket_name);
+
+    dbg.log1('replication_utils copy_objects_via_endpoint:', src_bucket, dst_bucket, keys.length);
+    await P.map_with_concurrency(100, keys, async key => { //The concurrency can only be on the keys as the order of the versions matters
+        const versions = keys_diff_map[key];
+        if (versions.length === 1) {
+            try {
+                await noobaa_con.copyObject({
+                    Bucket: dst_bucket,
+                    CopySource: encodeURI(`/${src_bucket}/${key}`),
+                    Key: key,
+                });
+                copy_res.num_of_objects += 1;
+                // The size of the object can be in either Size or ContentLength, depending on whether
+                // the request was ListObjectVersions or HeadObject
+                copy_res.size_of_objects += versions[0].ContentLength || versions[0].Size;
+            } catch (err) {
+                dbg.error('replication_utils copy_objects_via_endpoint: got error:', err);
+            }
+        } else {
+            for (let i = versions.length - 1; i >= 0; i--) { // We need to replicate the oldest first
+                const version = versions[i].VersionId;
+                try {
+                    await noobaa_con.copyObject({
+                        Bucket: dst_bucket,
+                        CopySource: encodeURI(`/${src_bucket}/${key}?versionId=${version}`),
+                        Key: key,
+                    });
+                    copy_res.num_of_objects += 1;
+                    copy_res.size_of_objects += versions[i].Size;
+                } catch (err) {
+                    dbg.error('replication_utils copy_objects_via_endpoint: got error:', err);
+                }
+            }
+        }
+    });
+    return copy_res;
+}
+
+/**
+ * Copy one diff page in this process through object_sdk.
+ * @param {any} src_bucket_name
+ * @param {any} dst_bucket_name
+ * @param {nb.BucketDiffKeysDiff | {}} keys_diff_map
+ * @returns {Promise<{ num_of_objects: number, size_of_objects: number }>}
+ */
+async function copy_objects_page(src_bucket_name, dst_bucket_name, keys_diff_map) {
+    const copy_res = { num_of_objects: 0, size_of_objects: 0 };
+    const keys = Object.keys(keys_diff_map || {});
+    if (!keys.length) return copy_res;
+
+    const P = require('../../util/promise');
+    const ObjectIO = require('../../sdk/object_io');
+    const ObjectSDK = require('../../sdk/object_sdk');
+    const server_rpc = require('../server_rpc');
+    const src_bucket = plain_bucket_name(src_bucket_name);
+    const dst_bucket = plain_bucket_name(dst_bucket_name);
+    const object_sdk = new_object_sdk(ObjectSDK, ObjectIO, server_rpc);
+
+    dbg.log1('replication_utils copy_objects_page:', src_bucket, dst_bucket, keys.length);
+    await P.map_with_concurrency(100, keys, async key => { //The concurrency can only be on the keys as the order of the versions matters
+        const versions = keys_diff_map[key];
+        if (versions.length === 1) {
+            try {
+                await copy_object(object_sdk, src_bucket, dst_bucket, key);
+                copy_res.num_of_objects += 1;
+                // The size of the object can be in either Size or ContentLength, depending on whether
+                // the request was ListObjectVersions or HeadObject
+                copy_res.size_of_objects += versions[0].ContentLength || versions[0].Size;
+            } catch (err) {
+                dbg.error('replication_utils copy_objects_page: got error:', err);
+            }
+        } else {
+            for (let i = versions.length - 1; i >= 0; i--) { // We need to replicate the oldest first
+                try {
+                    await copy_object(object_sdk, src_bucket, dst_bucket, key, versions[i].VersionId);
+                    copy_res.num_of_objects += 1;
+                    copy_res.size_of_objects += versions[i].Size;
+                } catch (err) {
+                    dbg.error('replication_utils copy_objects_page: got error:', err);
+                }
+            }
+        }
+    });
+    return copy_res;
+}
+
+/**
+ * @param {typeof import('../../sdk/object_sdk')} ObjectSDK
+ * @param {typeof import('../../sdk/object_io')} ObjectIO
+ * @param {{ rpc: { new_client: (options: object) => nb.APIClient } }} server_rpc
+ * @returns {import('../../sdk/object_sdk')}
+ */
+function new_object_sdk(ObjectSDK, ObjectIO, server_rpc) {
+    const system = system_store.data.systems[0];
+    const auth_token = auth_server.make_auth_token({
+        system_id: system._id,
+        account_id: system.owner._id,
+        role: 'admin',
+    });
+    const rpc_client = server_rpc.rpc.new_client({ auth_token });
+    const internal_rpc_client = server_rpc.rpc.new_client({ auth_token });
+    return new ObjectSDK({
+        rpc_client,
+        internal_rpc_client,
+        object_io: new ObjectIO(),
+    });
+}
+
+/**
+ * @param {import('../../sdk/object_sdk')} object_sdk
+ * @param {string} src_bucket
+ * @param {string} dst_bucket
+ * @param {string} key
+ * @param {string} [version_id]
+ * @returns {Promise<void>}
+ */
+async function copy_object(object_sdk, src_bucket, dst_bucket, key, version_id) {
+    const copy_source = {
+        bucket: src_bucket,
+        key,
+    };
+    if (version_id) copy_source.version_id = version_id;
+    await object_sdk.upload_object({
+        bucket: dst_bucket,
+        key,
+        copy_source,
+        // S3 CopyObject defaults: copy metadata and tags.
+        xattr_copy: true,
+        tagging_copy: true,
+    });
+}
+
+/**
+ * @param {any} name
+ * @returns {string}
+ */
+function plain_bucket_name(name) {
+    if (name && typeof name.unwrap === 'function') return name.unwrap();
+    return name;
+}
+
 // EXPORTS
+exports.REPLICATION_TASK_KIND = REPLICATION_TASK_KIND;
 exports.get_rule_and_bucket_status = get_rule_and_bucket_status;
 exports.update_replication_prom_report = update_replication_prom_report;
 exports.report_failed_replication_cycle = report_failed_replication_cycle;
@@ -341,4 +500,6 @@ exports.get_object_md = get_object_md;
 exports.find_src_and_dst_buckets = find_src_and_dst_buckets;
 exports.get_copy_type = get_copy_type;
 exports.copy_objects = copy_objects;
+exports.copy_objects_via_endpoint = copy_objects_via_endpoint;
+exports.copy_objects_page = copy_objects_page;
 exports.delete_objects = delete_objects;

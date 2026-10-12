@@ -21,6 +21,7 @@ const lifecycle = require('./bg_services/lifecycle');
 const cluster_hb = require('./bg_services/cluster_hb');
 const server_rpc = require('./server_rpc');
 const db_client = require('../util/db_client');
+const message_queue_client = require('../util/message_queue_client');
 const { BucketsReclaimer } = require('./bg_services/buckets_reclaimer');
 const { ObjectsReclaimer } = require('./bg_services/objects_reclaimer');
 const { LifecycleReclaimer } = require('./bg_services/lifecycle_reclaimer');
@@ -32,8 +33,8 @@ const AgentBlocksVerifier = require('./bg_services/agent_blocks_verifier').Agent
 const AgentBlocksReclaimer = require('./bg_services/agent_blocks_reclaimer').AgentBlocksReclaimer;
 const stats_aggregator = require('./system_services/stats_aggregator');
 const { NamespaceMonitor } = require('./bg_services/namespace_monitor');
-const { ReplicationScanner } = require('./bg_services/replication_scanner');
-const { LogReplicationScanner } = require('./bg_services/log_replication_scanner');
+const { ReplicationWorker } = require('./bg_services/replication_scanner');
+const { LogReplicationWorker } = require('./bg_services/log_replication_scanner');
 const { BucketLogUploader } = require('./bg_services/bucket_logs_upload');
 const usage_aggregator = require('./bg_services/usage_aggregator');
 const md_aggregator = require('./bg_services/md_aggregator');
@@ -46,6 +47,7 @@ const prom_reporting = require('./analytic_services/prometheus_reporting');
 const { TieringTTLWorker } = require('./bg_services/tier_ttl_worker');
 const { Notificator } = require('../util/notifications_util');
 const system_store = require('./system_services/system_store').get_instance();
+const bg_task_executor = require('./bg_services/bg_task_executor');
 
 function register_rpc() {
     server_rpc.register_bg_services();
@@ -79,16 +81,16 @@ function run_master_workers() {
         dbg.warn('NAMESPACE_MONITOR NOT ENABLED');
     }
     if (config.REPLICATION_ENABLED) {
-        register_bg_worker(new ReplicationScanner({
-            name: 'replication scanner',
+        register_bg_worker(new ReplicationWorker({
+            name: 'replication worker',
             client: server_rpc.client,
         }));
     } else {
         dbg.warn('REPLICATION NOT ENABLED');
     }
     if (config.LOG_REPLICATION_ENABLED) {
-        register_bg_worker(new LogReplicationScanner({
-            name: 'log replication scanner',
+        register_bg_worker(new LogReplicationWorker({
+            name: 'log replication worker',
             client: server_rpc.client,
         }));
     } else {
@@ -257,31 +259,71 @@ async function main() {
         dbg_conf.core.map(module => dbg.set_module_level(dbg_conf.level, module));
     }
 
-    await Promise.all([
-        db_client.instance().connect(),
-        register_rpc(),
-    ]);
+    const mode = workers_mode();
+    if (mode === 'executor') dbg.set_process_name('BGWorkersExecutor');
+    // Scanners call execute themselves. There is no queue to poll.
+    if (mode === 'executor' && config.MESSAGE_QUEUE_TYPE === 'none') {
+        dbg.log0('BGWorkers executor mode: MESSAGE_QUEUE_TYPE=none, scanners run execute directly');
+        return;
+    }
+
+    await db_client.instance().connect();
+    const queue_client = message_queue_client.instance();
+    const connect_queue = queue_client ?
+        queue_client.connect(config.REPLICATION_QUEUE_NAME) :
+        Promise.resolve();
+    if (mode === 'default') {
+        await Promise.all([
+            connect_queue,
+            register_rpc(),
+        ]);
+    } else {
+        await connect_queue;
+    }
 
     //Set KeepAlive to all http/https agents in bg_workers
     http_utils.update_http_agents({ keepAlive: true });
     http_utils.update_https_agents({ keepAlive: true });
 
-    register_bg_worker({
-        name: 'cluster_heartbeat_writer',
-        delay: config.CLUSTER_HB_INTERVAL,
-        run_immediate: true
-    }, cluster_hb.do_heartbeat);
+    if (mode === 'default') {
+        register_bg_worker({
+            name: 'cluster_heartbeat_writer',
+            delay: config.CLUSTER_HB_INTERVAL,
+            run_immediate: true
+        }, cluster_hb.do_heartbeat);
 
-    // Try to start the bg workers metrics server
-    await prom_reporting.start_server(config.BG_METRICS_SERVER_PORT);
+        // Try to start the bg workers metrics server
+        await prom_reporting.start_server(config.BG_METRICS_SERVER_PORT);
+    }
 
-    dbg.log0('BGWorkers waiting for SystemStore load...');
+    dbg.log0(`BGWorkers waiting for SystemStore load (${mode})...`);
     await system_store.wait_for_load();
-    dbg.log0('BGWorkers SystemStore loaded, starting master workers');
-    run_master_workers();
+    if (mode === 'default') {
+        dbg.log0('BGWorkers default mode, starting master workers');
+        run_master_workers();
+    }
+    if (config.MESSAGE_QUEUE_TYPE === 'none') {
+        dbg.log0('BGWorkers: MESSAGE_QUEUE_TYPE=none, workers run execute directly');
+        return;
+    }
+    dbg.log0(`BGWorkers ${mode} mode, starting task executors`);
+    await bg_task_executor.get_instance().init();
 }
 
 exports.main = main;
 exports.run_master_workers = run_master_workers;
 
 if (require.main === module) main();
+
+/**
+ * default runs the scanners and the other background workers, and also drains
+ * the task queues. executor only drains the queues, so more of these processes
+ * can share the copy work without scanning or binding the bg port.
+ * @returns {'default' | 'executor'}
+ */
+function workers_mode() {
+    const mode = config.BG_WORKERS_MODE;
+    if (mode === 'executor') return 'executor';
+    if (mode === 'default') return 'default';
+    throw new Error(`NON SUPPORTED BG_WORKERS_MODE ${mode}`);
+}

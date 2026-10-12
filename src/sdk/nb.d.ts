@@ -774,6 +774,7 @@ type MessageQueueType = 'postgres' | 'none';
 interface QueueMessage {
     _id: string;
     queue: string;
+    kind?: string;
     payload: object;
     retry_count: number;
     lock_token: string;
@@ -791,7 +792,7 @@ interface MessageQueueNackResult {
 interface MessageQueueClient {
     connect(queue: string, visibility_ms?: string, retry_limit?: number, dead_retention_ms?: string): Promise<void>;
     disconnect(): Promise<void>;
-    enqueue(queue: string, payload: object): Promise<string>;
+    enqueue(queue: string, payload: object, kind?: string): Promise<string>;
     dequeue(queue: string): Promise<QueueMessage | null>;
     size(queue: string): Promise<number>;
     ack(message: QueueMessage): Promise<void>;

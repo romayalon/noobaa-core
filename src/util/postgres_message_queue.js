@@ -99,16 +99,21 @@ class PostgresMessageQueue {
 
     /**
      * enqueue inserts a new message into the queue with capacity check.
+     * kind is stored on the message. The payload stays the task body.
      * @param {string} queue
      * @param {object} payload
+     * @param {string} [kind]
      * @returns {Promise<string>}
      */
-    async enqueue(queue, payload) {
+    async enqueue(queue, payload, kind) {
         const table = this._table(queue);
         const body = normalize_payload(payload);
+        const message_kind = normalize_kind(kind);
         const _id = db_client.instance().new_object_id();
         const now = new Date();
-        const message = { _id, payload: body, enqueued_at: now, visible_at: now };
+        const message = message_kind === undefined ?
+            { _id, payload: body, enqueued_at: now, visible_at: now } :
+            { _id, kind: message_kind, payload: body, enqueued_at: now, visible_at: now };
         const capacity_condition = { dead_at: null };
         await table.insertOne(message, capacity_condition);
         return String(_id);
@@ -158,6 +163,7 @@ class PostgresMessageQueue {
         return {
             _id: String(row._id).trim(),
             queue,
+            kind: data.kind,
             payload: data.payload,
             retry_count: Number(data.retry_count),
             lock_token: token,
@@ -329,6 +335,19 @@ function validate_queue_name(queue) {
     if (typeof queue !== 'string' || !QUEUE_NAME_PATTERN.test(queue)) {
         throw new Error(`invalid message queue name - ${queue}, use lowercase letters, digits, or underscores, and start with a letter or underscore`);
     }
+}
+
+/**
+ * Return the message kind, or undefined when the caller did not set one.
+ * @param {string} [kind]
+ * @returns {string | undefined}
+ */
+function normalize_kind(kind) {
+    if (kind === undefined) return undefined;
+    if (typeof kind !== 'string' || !kind) {
+        throw new Error(`message queue kind must be a non-empty string - ${kind}`);
+    }
+    return kind;
 }
 
 /**

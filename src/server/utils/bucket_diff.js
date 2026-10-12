@@ -130,7 +130,9 @@ class BucketDiff {
             }
         }
 
-        diff.second_bucket_cont_token = (first_bucket_cont_token && second_bucket_cont_token) ? new_second_bucket_cont_token : '';
+        // The last destination list has no NextContinuationToken once that list ends.
+        // second_bucket_cont_token is the resume point from the page still inside the source page.
+        diff.second_bucket_cont_token = (first_bucket_cont_token && second_bucket_cont_token) ? second_bucket_cont_token : '';
         dbg.log2('BucketDiff get_buckets_diff', diff);
         return diff;
     }
