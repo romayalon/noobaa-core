@@ -13,7 +13,10 @@ const { NodeHttpHandler } = require("@smithy/node-http-handler");
 const { S3 } = require('@aws-sdk/client-s3');
 const http = require('http');
 const cloud_utils = require('../../../../util/cloud_utils');
-const { ReplicationScanner } = require('../../../../server/bg_services/replication_scanner');
+const replication_scanner = require('../../../../server/bg_services/replication_scanner');
+const { ReplicationWorker } = replication_scanner;
+const { BgTaskExecutor, CONSUME_RESULT } = require('../../../../server/bg_services/bg_task_executor');
+const message_queue_client = require('../../../../util/message_queue_client');
 const { get_object } = require('../../../system_tests/test_utils');
 
 const db_client = require('../../../../util/db_client').instance();
@@ -348,10 +351,11 @@ mocha.describe('replication configuration bg worker tests', function() {
             return s3_owner;
         };
         // init scanner
-        scanner = new ReplicationScanner({
+        scanner = new ReplicationWorker({
             name: 'replication_scanner',
             client: rpc_client
         });
+        run_queued_replication_on_scan(scanner);
     });
 
     mocha.after('delete buckets', async function() {
@@ -643,11 +647,12 @@ mocha.describe('Replication pagination test', function() {
             return s3_owner;
         };
         // init scanner
-        scanner = new ReplicationScanner({
+        scanner = new ReplicationWorker({
             name: 'replication_scanner',
             client: rpc_client
         });
         scanner.noobaa_connection = s3_owner; // needed when not calling batch
+        run_queued_replication_on_scan(scanner);
     });
 
     mocha.after('delete buckets', async function() {
@@ -676,3 +681,40 @@ mocha.describe('Replication pagination test', function() {
         await _list_objects_and_wait(s3_owner, target_bucket, obj_amount);
     });
 });
+
+/**
+ * Scan enqueues replicate tasks. Drain them in this process so the test still
+ * observes the copies that execute used to perform inside run_batch.
+ * @param {ReplicationWorker} scanner
+ */
+function run_queued_replication_on_scan(scanner) {
+    const worker = new ReplicationWorker({
+        name: 'replication worker',
+        client: scanner.client,
+        commit_scan_status: false,
+    });
+    const run_batch = scanner.run_batch.bind(scanner);
+    scanner.run_batch = async () => {
+        const delay = await run_batch();
+        const task_executor = new BgTaskExecutor(scanner.client);
+        task_executor.mq_client = scanner.message_queue || message_queue_client.instance();
+        const task_type = {
+            name: 'replicate',
+            queue: config.REPLICATION_QUEUE_NAME,
+            /**
+             * @param {nb.QueueMessage} message
+             * @returns {Promise<void>}
+             */
+            execute: async message => {
+                const payload = /** @type {Parameters<ReplicationWorker['execute_task']>[0]} */ (message.payload);
+                await worker.execute_task(payload);
+            },
+        };
+        for (let i = 0; i < config.BG_EXECUTOR_MAX_MESSAGES; i++) {
+            const result = await task_executor.consume_message(task_type);
+            if (result === CONSUME_RESULT.EMPTY) return delay;
+            if (result === CONSUME_RESULT.ERROR) throw new Error(`task ${task_type.name} failed`);
+        }
+        throw new Error(`task ${task_type.name} stopped after ${config.BG_EXECUTOR_MAX_MESSAGES} messages`);
+    };
+}

@@ -10,7 +10,7 @@ const auth_server = require('../../../server/common_services/auth_server');
 const rpc_client = server_rpc.rpc.new_client({
     auth_token: auth_server.make_auth_token({}),
 });
-const { LogReplicationScanner } = require('../../../server/bg_services/log_replication_scanner.js');
+const { LogReplicationWorker } = require('../../../server/bg_services/log_replication_scanner.js');
 
 // @ts-ignore
 const mock_fn = jest.fn();
@@ -88,11 +88,11 @@ describe('Azure blob log parsing tests', () => {
 });
 
 describe('AWS S3 server logs parsing/processing tests', () => {
-    let log_scanner;
+    let log_executor;
     let response;
     beforeEach(() => {
-        log_scanner = new LogReplicationScanner({
-            name: "log_replication_scanner",
+        log_executor = new LogReplicationWorker({
+            name: 'log replication worker',
             client: rpc_client
         });
         response = [
@@ -279,14 +279,14 @@ describe('AWS S3 server logs parsing/processing tests', () => {
         }
 
         // Mocking head_objects to return expected response
-        jest.spyOn(log_scanner, 'head_objects').mockResolvedValue(response);
+        jest.spyOn(log_executor, 'head_objects').mockResolvedValue(response);
 
         // Mocking both copy_objects and delete_objects method as we are not copying or deleting actual object here
-        log_scanner.copy_objects = mock_fn.mockReturnThis();
-        log_scanner.delete_objects = mock_fn.mockReturnThis();
+        log_executor.copy_objects = mock_fn.mockReturnThis();
+        log_executor.delete_objects = mock_fn.mockReturnThis();
 
         // Make sure processing of all the candidates working as expected
-        const { copy_keys, delete_keys } = await log_scanner.execute(src_bucket, dst_bucket, candidates);
+        const { copy_keys, delete_keys } = await log_executor.execute(src_bucket, dst_bucket, candidates);
 
         expect(Object.keys(copy_keys).length).toEqual(4);
         expect(delete_keys.length).toEqual(4);

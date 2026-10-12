@@ -233,7 +233,8 @@ function require_optional(module_name) {
     try {
         return require(module_name);
     } catch (err) {
-        if (err.code === 'MODULE_NOT_FOUND') {
+        if (err.code === 'MODULE_NOT_FOUND' || err.code === 'ERR_DLOPEN_FAILED' ||
+            (typeof err.message === 'string' && err.message.includes('Cannot find native binding'))) {
             return null;
         }
         throw err;

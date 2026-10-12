@@ -1989,4 +1989,41 @@ describe('BucketDiff get_buckets_diff', () => {
         expect(result.second_bucket_cont_token).toEqual('');
     });
 
+    it('keeps the destination resume token when a later destination list has no token', async () => {
+        mock_fn.mockReset();
+        mock_fn.mockResolvedValueOnce({
+            Contents: [
+                { Key: 'obj-000200', Size: 100 },
+                { Key: 'obj-000299', Size: 100 },
+            ],
+            IsTruncated: true,
+            NextContinuationToken: 'src-after-000299',
+        });
+        mock_fn.mockResolvedValueOnce({
+            Contents: [
+                { Key: 'obj-000000', Size: 100 },
+                { Key: 'obj-000099', Size: 100 },
+            ],
+            IsTruncated: true,
+            NextContinuationToken: 'dst-after-000099',
+        });
+        mock_fn.mockResolvedValueOnce({
+            Contents: [
+                { Key: 'obj-000100', Size: 100 },
+                { Key: 'obj-000199', Size: 100 },
+            ],
+            IsTruncated: false,
+        });
+
+        bucketDiff._list_objects = mock_fn;
+        const result = await bucketDiff.get_buckets_diff(params);
+
+        expect(result.keys_diff_map).toEqual({
+            'obj-000200': [{ Key: 'obj-000200', Size: 100 }],
+            'obj-000299': [{ Key: 'obj-000299', Size: 100 }],
+        });
+        expect(result.first_bucket_cont_token).toEqual('src-after-000299');
+        expect(result.second_bucket_cont_token).toEqual('dst-after-000099');
+    });
+
 });
