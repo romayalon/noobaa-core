@@ -695,6 +695,7 @@ class PostgresTable {
         this.db_indexes = [id_index, ...(db_indexes || [])];
         this.schema = schema;
         this.client = client;
+        this.capacity = table_params.capacity;
 
         // the pool to be used for the table
         this.pool_key = table_params.postgres_pool || 'default';
@@ -833,8 +834,14 @@ class PostgresTable {
         return this.countDocuments(query);
     }
 
-    async insertOne(data) {
-
+    /**
+     * Insert one row. A table with capacity inserts only when fewer than that many rows match condition.
+     * @param {object} data Document to insert. Must include _id.
+     * @param {object} [condition] Rows that count toward the capacity. The whole table counts when omitted.
+     * @returns {Promise<object>}
+     */
+    async insertOne(data, condition) {
+        if (this.capacity !== undefined) return this._insertOneWithCapacity(data, condition);
         const _id = this.get_id(data);
         await this.single_query(`INSERT INTO ${this.name} (_id, data) VALUES ($1, $2)`, [String(_id), encode_json(this.schema, data)]);
         // TODO: Implement type
@@ -1354,6 +1361,29 @@ class PostgresTable {
 
     col() {
         return this;
+    }
+
+    /**
+     * Insert one row only when fewer than capacity rows match condition.
+     * The count and the insert are one statement, so a full table inserts nothing.
+     * @param {object} data Document to insert. Must include _id.
+     * @param {object} [condition] Rows that count toward the capacity. The whole table counts when omitted.
+     * @returns {Promise<object>}
+     */
+    async _insertOneWithCapacity(data, condition) {
+        const _id = this.get_id(data);
+        const where = _.isEmpty(condition) ?
+            '' :
+            ` WHERE ${mongo_to_pg('data', encode_json(this.schema, condition), {disableContainmentQuery: true})}`;
+        const res = await this.single_query(
+            `INSERT INTO ${this.name} (_id, data) SELECT $1, $2::jsonb WHERE (SELECT count(*)::int FROM ${this.name}${where}) < $3`,
+            [String(_id), encode_json(this.schema, data), this.capacity],
+        );
+        if (res.rowCount) return {};
+        const scope = data.queue_name ? `${this.name} ${data.queue_name}` : this.name;
+        const message = `_insertOneWithCapacity: ${scope} is full, capacity=${this.capacity}`;
+        dbg.error(message);
+        throw new Error(message);
     }
 
 }

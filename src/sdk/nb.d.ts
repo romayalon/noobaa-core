@@ -762,6 +762,38 @@ interface APIClient {
 
 type DBType = 'postgres' | 'none';
 
+/**********************************************************
+ *
+ * Message Queue CLIENT
+ *
+ **********************************************************/
+
+
+type MessageQueueType = 'postgres' | 'none';
+
+interface QueueMessage {
+    id: string;
+    queue: string;
+    payload: object;
+    retry_count: number;
+    lock_token?: string;
+    terminal?: boolean;
+}
+
+interface MessageQueueNackResult {
+    dropped: boolean;
+}
+
+interface MessageQueueClient {
+    connect(): Promise<void>;
+    disconnect(): Promise<void>;
+    enqueue(queue: string, payload: object): Promise<string>;
+    dequeue(queue: string): Promise<QueueMessage | null>;
+    size(queue: string): Promise<number>;
+    ack(message: QueueMessage): Promise<void>;
+    nack(message: QueueMessage, reason?: string): Promise<MessageQueueNackResult>;
+}
+
 interface DBClient {
     operators: Set<string>;
 
@@ -842,7 +874,7 @@ interface DBCollection {
     findOneAndUpdate(query: object, update: object, options?: object): Promise<DBDoc>;
     deleteOne(query: object, options?: object): Promise<object>;
     deleteMany(query: object, options?: object): Promise<mongodb.DeleteWriteOpResultObject>;
-    insertOne(doc: DBDoc, options?: object): Promise<object>;
+    insertOne(doc: DBDoc, condition?: object): Promise<object>;
     insertManyUnordered(docs: DBDoc[]): Promise<object>;
     updateOne(query: object, update: object, options?: object): Promise<object>;
     updateMany(query: object, update: object, options?: object): Promise<object>;
@@ -864,6 +896,7 @@ interface DBCollection {
     get_pool(): string;
     name: any;
     schema: any;
+    capacity?: number;
 }
 
 type DBDoc = any;
