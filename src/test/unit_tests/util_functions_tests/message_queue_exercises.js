@@ -5,7 +5,6 @@
 const assert = require('assert');
 
 const P = require('../../../util/promise');
-const config = require('../../../../config');
 
 /**
  * @param {nb.MessageQueueClient} queue
@@ -13,7 +12,8 @@ const config = require('../../../../config');
  */
 async function exercise_queue(queue, prefix) {
     const name = `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-    await queue.connect(name);
+    // Delay 0 so the nack below can be claimed again on the next dequeue.
+    await queue.connect(name, undefined, undefined, undefined, 0);
     assert.strictEqual(await queue.size(name), 0);
     assert.strictEqual(await queue.dequeue(name), null);
     await assert.rejects(() => queue.enqueue(name, /** @type {any} */ (null)), /JSON object/);
@@ -40,32 +40,26 @@ async function exercise_queue(queue, prefix) {
 
     await queue.ack(first);
 
-    const orig_delay = config.MESSAGE_QUEUE_DEFAULT_RETRY_DELAY_MS;
-    config.MESSAGE_QUEUE_DEFAULT_RETRY_DELAY_MS = 0;
-    try {
-        const retried = await queue.nack(second, 'try again');
-        assert.strictEqual(retried.dropped, false);
-        const again = await queue.dequeue(name);
-        assert.ok(again);
-        assert.strictEqual(again._id, second._id);
-        assert.strictEqual(again.retry_count, 1);
-        assert.deepStrictEqual(again.payload, second.payload);
-        await queue.ack(again);
-        assert.strictEqual(await queue.size(name), 0);
+    const retried = await queue.nack(second, 'try again');
+    assert.strictEqual(retried.dropped, false);
+    const again = await queue.dequeue(name);
+    assert.ok(again);
+    assert.strictEqual(again._id, second._id);
+    assert.strictEqual(again.retry_count, 1);
+    assert.deepStrictEqual(again.payload, second.payload);
+    await queue.ack(again);
+    assert.strictEqual(await queue.size(name), 0);
 
-        const drop_name = `${name}_drop`;
-        await queue.connect(drop_name, undefined, 0);
-        await queue.enqueue(drop_name, { kind: 'transition_source', object_ids: ['obj-9'] });
-        const doomed = await queue.dequeue(drop_name);
-        if (!doomed) throw new Error('expected a message to drop');
-        assert.strictEqual(doomed.retry_count, 0);
-        const dropped = await queue.nack(doomed, 'give up');
-        assert.strictEqual(dropped.dropped, true);
-        assert.strictEqual(await queue.dequeue(drop_name), null);
-        assert.strictEqual(await queue.size(drop_name), 0);
-    } finally {
-        config.MESSAGE_QUEUE_DEFAULT_RETRY_DELAY_MS = orig_delay;
-    }
+    const drop_name = `${name}_drop`;
+    await queue.connect(drop_name, undefined, 0);
+    await queue.enqueue(drop_name, { kind: 'transition_source', object_ids: ['obj-9'] });
+    const doomed = await queue.dequeue(drop_name);
+    if (!doomed) throw new Error('expected a message to drop');
+    assert.strictEqual(doomed.retry_count, 0);
+    const dropped = await queue.nack(doomed, 'give up');
+    assert.strictEqual(dropped.dropped, true);
+    assert.strictEqual(await queue.dequeue(drop_name), null);
+    assert.strictEqual(await queue.size(drop_name), 0);
 }
 
 /**
@@ -73,7 +67,7 @@ async function exercise_queue(queue, prefix) {
  */
 async function exercise_stale_ack(queue) {
     const name = `pg_stale_${Date.now().toString(36)}`;
-    await queue.connect(name, '1');
+    await queue.connect(name, 1);
     await queue.enqueue(name, { kind: 'deleted', object_ids: ['obj-s'] });
     const first = await queue.dequeue(name);
     if (!first) throw new Error('expected a message');
@@ -98,7 +92,7 @@ async function exercise_stale_ack(queue) {
  */
 async function exercise_exhausted_claim(queue) {
     const name = `term_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
-    await queue.connect(name, '1', 0);
+    await queue.connect(name, 1, 0);
     await queue.enqueue(name, { kind: 'deleted', object_ids: ['obj-dead'] });
     await queue.enqueue(name, { kind: 'deleted', object_ids: ['obj-live'] });
     const crashed = await queue.dequeue(name);

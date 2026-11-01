@@ -778,7 +778,6 @@ interface QueueMessage {
     retry_count: number;
     lock_token: string;
     enqueued_at: Date;
-    visible_at: Date;
     locked_until: Date;
     last_error?: string;
     dead_at?: Date;
@@ -789,7 +788,7 @@ interface MessageQueueNackResult {
 }
 
 interface MessageQueueClient {
-    connect(queue: string, visibility_ms?: string, retry_limit?: number, dead_retention_ms?: string): Promise<void>;
+    connect(queue: string, visibility_ms?: number, retry_limit?: number, dead_retention_ms?: number, retry_delay_ms?: number): Promise<void>;
     disconnect(): Promise<void>;
     enqueue(queue: string, payload: object): Promise<string>;
     dequeue(queue: string): Promise<QueueMessage | null>;
@@ -797,7 +796,7 @@ interface MessageQueueClient {
     ack(message: QueueMessage): Promise<void>;
     nack(message: QueueMessage, reason?: string): Promise<MessageQueueNackResult>;
     is_retry_limit_exceeded(message: QueueMessage): boolean;
-    remove_expired_dead_messages(limit: number): Promise<number>;
+    remove_expired_dead_messages(limit: number): Promise<{ removed: number, had_errors: boolean }>;
 }
 
 interface DBClient {

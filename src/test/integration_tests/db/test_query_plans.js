@@ -933,23 +933,29 @@ mocha.describe('md_store query plan verification', function() {
             () => md_store.db_delete_blocks([test_ids.block._id]), [BLOCK]);
     });
 
-    mocha.it('message queue - size and dequeue use the visible_at index', async function() {
+    mocha.it('message queue - size and dequeue use the live index', async function() {
         const queue = new PostgresMessageQueue();
         const name = `mq_plan_${Date.now().toString(36)}`;
         await queue.connect(name);
-        const table = db_client.instance().collection(name);
-        if (table.init_promise) await table.init_promise;
         for (let i = 0; i < 50; i++) {
             await queue.enqueue(name, { kind: 'deleted', object_ids: [`obj-${i}`] });
         }
         await db_client.instance().executeSQL(`ANALYZE ${name}`);
-        const index = `idx_btree_${name}_message_queue_visible_at_index`;
-        await check('message queue size and dequeue', async () => {
+        const live_index = `idx_btree_${name}_message_queue_live_index`;
+        // size counts live rows. dequeue claims the smallest live _id.
+        // Both are served by the partial _id index.
+        await check('message queue size', async () => {
             await queue.size(name);
+        }, [name], {
+            expected_indexes_by_table: {
+                [name]: [live_index],
+            },
+        });
+        await check('message queue dequeue', async () => {
             await queue.dequeue(name);
         }, [name], {
             expected_indexes_by_table: {
-                [name]: [index],
+                [name]: [live_index],
             },
         });
     });

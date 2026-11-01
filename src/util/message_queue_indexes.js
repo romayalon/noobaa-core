@@ -3,13 +3,13 @@
 
 module.exports = [
     {
-        // dequeue and size skip rows with dead_at set. This index covers the rest,
-        // in the order those messages become claimable. The table is one queue.
+        // dequeue and size skip rows with dead_at set. This index is the rest,
+        // in claim order. _id grows with enqueue time, and the table is one queue.
         fields: {
-            visible_at: 1,
+            _id: 1,
         },
         options: {
-            name: 'message_queue_visible_at_index',
+            name: 'message_queue_live_index',
             partialFilterExpression: {
                 dead_at: null,
             },

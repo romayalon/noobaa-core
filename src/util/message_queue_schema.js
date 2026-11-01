@@ -8,7 +8,6 @@ module.exports = {
         '_id',
         'payload',
         'enqueued_at',
-        'visible_at',
     ],
     properties: {
         _id: { objectid: true },
@@ -19,9 +18,9 @@ module.exports = {
             additionalProperties: true,
         },
         enqueued_at: { date: true },
-        // Not claimable before this time. nack pushes it forward.
-        visible_at: { date: true },
-        // Claim deadline set by dequeue. Absent when the row is free.
+        // Absent when the row is free.
+        // dequeue sets the claim deadline. A requeue with a retry delay sets
+        // that delay here and leaves the row in its original _id place.
         locked_until: { date: true },
         // Retries already used. Absent until the first claim, which stores 0.
         // Each later claim adds 1, including a claim past the queue retry limit.
@@ -30,7 +29,7 @@ module.exports = {
         // Current claim. ack and nack must present it.
         lock_token: { type: 'string' },
         last_error: { type: 'string' },
-        // Set by a dropping nack. The live index omits these rows.
+        // Set by a dropping nack. Claims and size skip these rows.
         dead_at: { date: true },
     },
 };

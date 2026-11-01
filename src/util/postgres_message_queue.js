@@ -6,9 +6,10 @@
  * @typedef {nb.DBCollection & {
  *   name: string,
  *   capacity: number,
- *   visibility_ms: string,
+ *   visibility_ms: number,
  *   retry_limit: number,
- *   dead_retention_ms: string,
+ *   retry_delay_ms: number,
+ *   dead_retention_ms: number,
  *   init_promise?: Promise<void>,
  * }} QueueTable
  */
@@ -31,8 +32,8 @@ const QUEUE_NAME_PATTERN = /^[a-z_][a-z0-9_]*$/;
  * The process must already have called db_client.connect().
  * The first claim stores retry_count 0, and each later claim adds 1.
  * A claim with retry_count above the queue's retry_limit is a redelivery after
- * the last allowed try. nack records it with dead_at so it leaves the live index.
- * retry_limit stays on the queue, set at connect.
+ * the last allowed try. nack records it with dead_at so later claims skip it.
+ * visibility_ms, retry_limit, dead_retention_ms, and retry_delay_ms stay on the queue, set at connect.
  *
  * @implements {nb.MessageQueueClient}
  */
@@ -58,16 +59,17 @@ class PostgresMessageQueue {
      * Register one queue table.
      * Call again with another name to register another queue.
      * A name already in this process returns that queue and keeps its settings.
-     * The process must already have called db_client.connect(). define_collection
-     * starts creating the table, and connect waits for that create to finish.
-     * A retry limit of 0 is kept. Omitted arguments use the config defaults.
+     * The process must already have called db_client.connect(). connect waits for
+     * the queue table init promise.
+     * A retry limit of 0 is kept. A retry delay of 0 is kept. Omitted arguments use the config defaults.
      * @param {string} name Postgres table for this queue.
-     * @param {string} [visibility_ms] How long a claim stays locked. Defaults to MESSAGE_QUEUE_DEFAULT_VISIBILITY_MS.
+     * @param {number} [visibility_ms] How long a claim stays locked. Defaults to MESSAGE_QUEUE_DEFAULT_VISIBILITY_MS.
      * @param {number} [retry_limit] Claims allowed before nack drops the message. Defaults to MESSAGE_QUEUE_DEFAULT_RETRY_LIMIT.
-     * @param {string} [dead_retention_ms] How long a dead message stays before cleanup, in milliseconds. Defaults to MESSAGE_QUEUE_DEFAULT_DEAD_RETENTION_MS.
+     * @param {number} [dead_retention_ms] How long a dead message stays before the cleaner deletes it, in milliseconds. Defaults to MESSAGE_QUEUE_DEFAULT_DEAD_RETENTION_MS. The cleaner uses this value after connect, and the default for a registered name this process has not connected.
+     * @param {number} [retry_delay_ms] How long nack waits before the message can be claimed again, in milliseconds. The same delay is used on every retry. Defaults to MESSAGE_QUEUE_DEFAULT_RETRY_DELAY_MS.
      * @returns {Promise<void>}
      */
-    async connect(name, visibility_ms, retry_limit, dead_retention_ms) {
+    async connect(name, visibility_ms, retry_limit, dead_retention_ms, retry_delay_ms) {
         validate_queue_name(name);
         const existing = this._queues.get(name);
         if (existing) {
@@ -84,9 +86,10 @@ class PostgresMessageQueue {
             db_indexes: message_queue_indexes,
             capacity: config.MESSAGE_QUEUE_DEFAULT_CAPACITY,
         }));
-        table.visibility_ms = visibility_ms ?? String(config.MESSAGE_QUEUE_DEFAULT_VISIBILITY_MS);
+        table.visibility_ms = visibility_ms ?? config.MESSAGE_QUEUE_DEFAULT_VISIBILITY_MS;
         table.retry_limit = retry_limit ?? config.MESSAGE_QUEUE_DEFAULT_RETRY_LIMIT;
-        table.dead_retention_ms = dead_retention_ms ?? String(config.MESSAGE_QUEUE_DEFAULT_DEAD_RETENTION_MS);
+        table.dead_retention_ms = dead_retention_ms ?? config.MESSAGE_QUEUE_DEFAULT_DEAD_RETENTION_MS;
+        table.retry_delay_ms = retry_delay_ms ?? config.MESSAGE_QUEUE_DEFAULT_RETRY_DELAY_MS;
         this._queues.set(name, table);
         if (table.init_promise) await table.init_promise;
     }
@@ -108,7 +111,7 @@ class PostgresMessageQueue {
         const body = normalize_payload(payload);
         const _id = db_client.instance().new_object_id();
         const now = new Date();
-        const message = { _id, payload: body, enqueued_at: now, visible_at: now };
+        const message = { _id, payload: body, enqueued_at: now };
         const capacity_condition = { dead_at: null };
         await table.insertOne(message, capacity_condition);
         return String(_id);
@@ -116,9 +119,12 @@ class PostgresMessageQueue {
 
     /**
      * dequeue uses FOR UPDATE SKIP LOCKED so concurrent workers each take a
-     * different message. Each claim gets a lock token that ack and nack must
-     * present, so a worker whose visibility lock expired cannot complete the
-     * next claim
+     * different message. The claim is the smallest _id among live rows whose
+     * locked_until is absent or already past. The live index is that _id order
+     * for rows with no dead_at. A nack with a retry delay
+     * sets locked_until and leaves that _id in place. Each claim gets a lock
+     * token that ack and nack must present, so a worker whose visibility lock
+     * expired cannot complete the next claim
      * @param {string} queue
      * @returns {Promise<nb.QueueMessage | null>}
      */
@@ -130,19 +136,18 @@ class PostgresMessageQueue {
                  SELECT _id, (data->>'retry_count')::int AS retry_count
                  FROM ${table.name}
                  WHERE data->'dead_at' IS NULL
-                   AND (data->>'visible_at')::timestamptz <= now()
                    AND (
                      data->'locked_until' IS NULL
                      OR (data->>'locked_until')::timestamptz < now()
                    )
-                 ORDER BY _id
+                 ORDER BY (data->>'_id')
                  FOR UPDATE SKIP LOCKED
                  LIMIT 1
              )
              UPDATE ${table.name} AS q
              SET data = q.data || jsonb_build_object(
                  'lock_token', $2::text,
-                 'locked_until', now() + ($1::text || ' milliseconds')::interval,
+                 'locked_until', now() + ($1::bigint * interval '1 millisecond'),
                  'retry_count', CASE
                      WHEN candidate.retry_count IS NULL THEN 0
                      ELSE candidate.retry_count + 1 END
@@ -162,7 +167,6 @@ class PostgresMessageQueue {
             retry_count: Number(data.retry_count),
             lock_token: token,
             enqueued_at: new Date(data.enqueued_at),
-            visible_at: new Date(data.visible_at),
             locked_until: new Date(data.locked_until),
             last_error: data.last_error,
             dead_at: data.dead_at ? new Date(data.dead_at) : undefined,
@@ -203,7 +207,9 @@ class PostgresMessageQueue {
     }
 
     /**
-     * nack requeues the message after a delay.
+     * nack requeues the message. A retry delay above 0 sets locked_until to
+     * now plus that delay. A delay of 0 clears locked_until so the message
+     * can be claimed again and keeps its original _id place.
      * @param {nb.QueueMessage} message
      * @param {string} [reason]
      * @returns {Promise<nb.MessageQueueNackResult>}
@@ -215,9 +221,15 @@ class PostgresMessageQueue {
         const values = [message._id, token, reason || ''];
         let patch;
         if (retriable) {
-            const delay_ms = (message.retry_count + 1) * config.MESSAGE_QUEUE_DEFAULT_RETRY_DELAY_MS;
-            values.push(String(delay_ms));
-            patch = `jsonb_build_object('last_error', $3::text, 'visible_at', now() + ($4::text || ' milliseconds')::interval)`;
+            if (table.retry_delay_ms > 0) {
+                values.push(table.retry_delay_ms);
+                patch = `jsonb_build_object(
+                    'last_error', $3::text,
+                    'locked_until', now() + ($4::bigint * interval '1 millisecond')
+                )`;
+            } else {
+                patch = `jsonb_build_object('last_error', $3::text)`;
+            }
         } else {
             dbg.warn('postgres_message_queue: nack: postgres message queue marking message as dead after the retry limit', message._id, message.queue, reason);
             patch = `jsonb_build_object('dead_at', now(), 'last_error', $3::text)`;
@@ -268,30 +280,31 @@ class PostgresMessageQueue {
     }
 
     /**
-     * Delete dead messages older than each configured queue's retention.
-     * Names come from MESSAGE_QUEUE_REGISTERED. A queue this process has connected
-     * uses the retention from that connect. Any other configured queue uses
-     * MESSAGE_QUEUE_DEFAULT_DEAD_RETENTION_MS. Each queue deletes up to limit rows.
-     * A failed delete is skipped. The next cleaner pass retries it, including a
-     * queue whose table is not created yet.
+     * Delete dead messages older than the retention set for that queue at connect.
+     * Only names in MESSAGE_QUEUE_REGISTERED are visited. A registered name this
+     * process has not connected uses MESSAGE_QUEUE_DEFAULT_DEAD_RETENTION_MS.
+     * A missing table sets had_errors and stops the pass, keeping the removed
+     * count from names already cleaned. Any other failure sets had_errors and
+     * the loop continues. Each queue deletes up to limit rows.
      * @param {number} limit Maximum rows to delete from each queue.
-     * @returns {Promise<number>} Total rows deleted.
+     * @returns {Promise<{ removed: number, had_errors: boolean }>}
      */
     async remove_expired_dead_messages(limit) {
         let removed = 0;
+        let had_errors = false;
         for (const name of config.MESSAGE_QUEUE_REGISTERED) {
             try {
                 validate_queue_name(name);
                 const connected = this._queues.get(name);
                 const retention = connected ?
                     connected.dead_retention_ms :
-                    String(config.MESSAGE_QUEUE_DEFAULT_DEAD_RETENTION_MS);
+                    config.MESSAGE_QUEUE_DEFAULT_DEAD_RETENTION_MS;
                 const res = await this._query(
                     `DELETE FROM ${name}
                      WHERE _id IN (
                          SELECT _id FROM ${name}
                          WHERE data->'dead_at' IS NOT NULL
-                           AND (data->>'dead_at')::timestamptz < now() - ($2::text || ' milliseconds')::interval
+                           AND (data->>'dead_at')::timestamptz < now() - ($2::bigint * interval '1 millisecond')
                          LIMIT $1
                      )`,
                     [limit, retention],
@@ -300,10 +313,12 @@ class PostgresMessageQueue {
                 dbg.log1('postgres_message_queue: remove_expired_dead_messages: removed', count, 'dead messages from', name);
                 removed += count;
             } catch (err) {
-                dbg.error('postgres_message_queue: remove_expired_dead_messages: failed to delete dead messages from', name, err);
+                had_errors = true;
+                dbg.error('postgres_message_queue: remove_expired_dead_messages: failed to delete dead messages from', name, /** @type {Error} */ (err).message);
+                if (err.code === '42P01') break;
             }
         }
-        return removed;
+        return { removed, had_errors };
     }
 
     /**
