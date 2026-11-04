@@ -293,6 +293,24 @@ config.MESSAGE_QUEUE_CLEANER_ERROR_DELAY = 60 * 1000; // 1 minute, retry after a
 config.MESSAGE_QUEUE_CLEANER_BATCH_DELAY = 100; // 100ms, delay between batches
 config.MESSAGE_QUEUE_CLEANER_BATCH_SIZE = 1000;
 
+config.BG_EXECUTOR_BATCH_DELAY = 100;
+config.BG_EXECUTOR_EMPTY_DELAY = 1000;
+config.BG_EXECUTOR_ERROR_DELAY = 3000;
+// Concurrent task loops inside one executor process.
+config.BG_EXECUTOR_WORKERS = 1;
+// Share of executor turns, out of 100, keyed by task name.
+// The first entry owns the low end of the draw. With transition at 20 and
+// replication at 80, a draw above 0.2 takes a task from the replication queue.
+/** @type {Readonly<Record<string, number>>} */
+config.BG_EXECUTOR_WEIGHTS = Object.freeze(
+    process.env.BG_EXECUTOR_WEIGHTS ? JSON.parse(process.env.BG_EXECUTOR_WEIGHTS) : {},
+);
+config.BG_WORKERS_MODES = Object.freeze({
+    DEFAULT: 'default',
+    EXECUTOR: 'executor',
+});
+config.BG_WORKERS_MODE = process.env.BG_WORKERS_MODE || config.BG_WORKERS_MODES.DEFAULT;
+
 config.POSTGRES_DEFAULT_MAX_CLIENTS = 10;
 config.POSTGRES_MD_MAX_CLIENTS = (process.env.LOCAL_MD_SERVER === 'true') ? 70 : 10;
 config.POSTGRES_CONNECTION_TIMEOUT_MS = 10 * 1000;

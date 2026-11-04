@@ -48,6 +48,9 @@ const { TieringTTLWorker } = require('./bg_services/tier_ttl_worker');
 const { Notificator } = require('../util/notifications_util');
 const system_store = require('./system_services/system_store').get_instance();
 const api = require('../api');
+const bg_task_executor = require('./bg_services/bg_task_executor');
+
+const WORKERS_MODE = config.BG_WORKERS_MODES;
 
 function register_rpc() {
     server_rpc.register_bg_services();
@@ -261,38 +264,83 @@ async function main() {
 
     // Applies MGMT_ADDR / MD_ADDR / BG_ADDR / HOSTED_AGENTS_ADDR to the process RPC router.
     server_rpc.rpc.router = api.new_router_from_env(process.env);
-    await Promise.all([
-        db_client.instance().connect(),
-        register_rpc(),
-    ]);
+
+    const mode = workers_mode();
+    if (mode === WORKERS_MODE.EXECUTOR) dbg.set_process_name('BGWorkersExecutor');
+    // An executor process only drains queues. With no queue there is nothing to run.
+    if (mode === WORKERS_MODE.EXECUTOR && config.MESSAGE_QUEUE_TYPE === 'none') {
+        dbg.log0('BGWorkers executor mode: MESSAGE_QUEUE_TYPE=none, there is no queue to drain');
+        return;
+    }
+
+    await db_client.instance().connect();
+    if (mode === WORKERS_MODE.DEFAULT) {
+        await register_rpc();
+    }
 
     //Set KeepAlive to all http/https agents in bg_workers
     http_utils.update_http_agents({ keepAlive: true });
     http_utils.update_https_agents({ keepAlive: true });
 
-    register_bg_worker({
-        name: 'cluster_heartbeat_writer',
-        delay: config.CLUSTER_HB_INTERVAL,
-        run_immediate: true
-    }, cluster_hb.do_heartbeat);
-
-    if (config.MESSAGE_QUEUE_CLEANER_ENABLED) {
+    if (mode === WORKERS_MODE.DEFAULT) {
         register_bg_worker({
-            name: 'message_queue_cleaner',
-            delay: config.MESSAGE_QUEUE_CLEANER_ERROR_DELAY,
-            run_immediate: true,
-        }, message_queue_cleaner.background_worker);
+            name: 'cluster_heartbeat_writer',
+            delay: config.CLUSTER_HB_INTERVAL,
+            run_immediate: true
+        }, cluster_hb.do_heartbeat);
+
+        if (config.MESSAGE_QUEUE_CLEANER_ENABLED) {
+            register_bg_worker({
+                name: 'message_queue_cleaner',
+                delay: config.MESSAGE_QUEUE_CLEANER_ERROR_DELAY,
+                run_immediate: true,
+            }, message_queue_cleaner.background_worker);
+        } else {
+            dbg.warn('MESSAGE QUEUE CLEANER NOT ENABLED');
+        }
+
+        // Try to start the bg workers metrics server
+        await prom_reporting.start_server(config.BG_METRICS_SERVER_PORT);
+
+        dbg.log0('BGWorkers waiting for SystemStore load...');
+        await system_store.wait_for_load();
+        dbg.log0('BGWorkers SystemStore loaded, starting master workers');
+        run_master_workers();
     } else {
-        dbg.warn('MESSAGE QUEUE CLEANER NOT ENABLED');
+        dbg.log0('BGWorkers executor waiting for SystemStore load...');
+        await system_store.wait_for_load();
     }
 
     // HTTPS only. The serving cert is /etc/bg-secret, or a generated cert when that dir is missing.
     await prom_reporting.start_server(0, config.BG_METRICS_SERVER_SSL_PORT);
+    const tasks = bg_tasks();
+    if (!tasks.length || config.MESSAGE_QUEUE_TYPE === 'none') return;
+    const rpc_client = server_rpc.client;
+    if (!rpc_client) throw new Error('BGWorkers: rpc client is required');
+    dbg.log0(`BGWorkers ${mode} mode, starting task executor`);
+    await bg_task_executor.get_instance(rpc_client, tasks).init();
+}
 
-    dbg.log0('BGWorkers waiting for SystemStore load...');
-    await system_store.wait_for_load();
-    dbg.log0('BGWorkers SystemStore loaded, starting master workers');
-    run_master_workers();
+/**
+ * default runs the scanners and the other background workers, and also drains
+ * the task queues. executor only drains the queues, so more of these processes
+ * can share the work without scanning or binding the bg port.
+ * @returns {typeof WORKERS_MODE.DEFAULT | typeof WORKERS_MODE.EXECUTOR}
+ */
+function workers_mode() {
+    const mode = config.BG_WORKERS_MODE;
+    if (mode === WORKERS_MODE.EXECUTOR || mode === WORKERS_MODE.DEFAULT) return mode;
+    const str = `NON SUPPORTED BG_WORKERS_MODE ${mode}`;
+    dbg.error(str);
+    throw new Error(str);
+}
+
+/**
+ * Tasks this process can drain. Feature work adds its own entries.
+ * @returns {import('./bg_services/bg_task_executor').BgTaskType[]}
+ */
+function bg_tasks() {
+    return [];
 }
 
 exports.main = main;
