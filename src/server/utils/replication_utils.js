@@ -3,11 +3,20 @@
 
 const _ = require('lodash');
 const dbg = require('../../util/debug_module')(__filename);
+const message_queue_client = require('../../util/message_queue_client');
+// Shared queue registry - imports nothing from the executor, so the producer stays cycle-free.
+const { BG_TASK_QUEUES } = require('../bg_services/bg_queues_utils');
 const SensitiveString = require('../../util/sensitive_string');
 const system_store = require('../system_services/system_store').get_instance();
 const replication_store = require('../system_services/replication_store').instance();
 const prom_reporting = require('../analytic_services/prometheus_reporting');
 const auth_server = require('../common_services/auth_server');
+
+const REPLICATION_TASK_TYPE = Object.freeze({
+    SCAN: 'scan',
+    // Log-based replication over the queue is not implemented yet - built on romy-log-replication-scanner-mq.
+    LOG: 'log',
+});
 
 const PARTIAL_SINGLE_BUCKET_REPLICATION_DEFAULTS = {
     replication_id: '',
@@ -77,10 +86,11 @@ function get_rule_and_bucket_status(rule, src_cont_token, keys_diff_map, copy_re
 
 function update_replication_prom_report(bucket_name, replication_policy_id, rule_status, bucket_status) {
     const core_report = prom_reporting.get_core_report();
+    const name = bucket_name && typeof bucket_name.unwrap === 'function' ? bucket_name.unwrap() : bucket_name;
     const last_cycle_status = _.defaults({
         ...rule_status,
         ...bucket_status,
-        bucket_name: bucket_name.unwrap(),
+        bucket_name: name,
         replication_id: replication_policy_id
     }, PARTIAL_SINGLE_BUCKET_REPLICATION_DEFAULTS);
 
@@ -360,7 +370,205 @@ function _denormalize_log_replication_info(stored) {
     return undefined;
 }
 
+/**
+ * @typedef {typeof REPLICATION_TASK_TYPE.SCAN | typeof REPLICATION_TASK_TYPE.LOG} ReplicationTaskType
+ */
+
+/**
+ * Store one replicate task. The worker runs it instead of the scanner.
+ * task_type is stored on the message. The payload stays the task body.
+ * @param {nb.MessageQueueClient | null | undefined} mq_client Worker queue, or null for the process client.
+ * @param {ReplicationTaskType} task_type
+ * @param {{ replication_id: string, rule_id: string }} payload JSON object. Nested dates are stored as strings.
+ * @returns {Promise<string>} Id of the queued message.
+ * @throws {Error} when task_type or payload is missing, or the process has no queue
+ */
+async function enqueue_replication_task(mq_client, task_type, payload) {
+    if (task_type !== REPLICATION_TASK_TYPE.SCAN && task_type !== REPLICATION_TASK_TYPE.LOG) {
+        throw new Error('replicate task type is missing');
+    }
+    if (!payload) throw new Error('replicate task payload is missing');
+    mq_client = mq_client || message_queue_client.instance();
+    if (!mq_client) throw new Error('replicate task queue is not configured');
+    const queue_name = BG_TASK_QUEUES.replication.queue;
+    // connect applies the queue defaults from config; enqueue only inserts, so it needs no connect options.
+    await mq_client.connect(queue_name);
+    dbg.log1('replication: enqueue', task_type, payload.replication_id, payload.rule_id);
+    return mq_client.enqueue(queue_name, payload, task_type);
+}
+
+/**
+ * @param {*} id
+ * @returns {string}
+ */
+function replication_id_string(id) {
+    if (id === undefined || id === null) return '';
+    return String(id);
+}
+
+/**
+ * Load the source and destination buckets for a queued replicate task.
+ * @param {{ destination_bucket_id: string, replication_id: string, rule_id: string }} payload
+ * @returns {{ src_bucket: { name: nb.SensitiveString }, dst_bucket: { name: nb.SensitiveString } }}
+ * @throws {Error} when either bucket is missing
+ */
+function load_replication_task_buckets(payload) {
+    // Through exports so a test can replace the bucket lookup.
+    const found = exports.find_src_and_dst_buckets(payload.destination_bucket_id, payload.replication_id);
+    if (!found.src_bucket || !found.dst_bucket) {
+        throw new Error(`replicate task buckets are missing for rule ${payload.rule_id}`);
+    }
+    return {
+        src_bucket: /** @type {{ name: nb.SensitiveString }} */ (found.src_bucket),
+        dst_bucket: /** @type {{ name: nb.SensitiveString }} */ (found.dst_bucket),
+    };
+}
+
+const EXECUTOR_RULE_METRICS_LIMIT = 1000;
+
+const RULE_METRIC_FIELDS = [
+    'last_cycle_writes_num',
+    'last_cycle_writes_size',
+    'last_cycle_error_writes_num',
+    'last_cycle_error_writes_size',
+];
+
+const BUCKET_METRIC_FIELDS = [
+    'bucket_last_cycle_total_objects_num',
+    'bucket_last_cycle_replicated_objects_num',
+    'bucket_last_cycle_error_objects_num',
+];
+
+/**
+ * Latest reports for one rule in the current scan cycle.
+ * parts is keyed by report_id so a retry replaces that executor's numbers.
+ * @typedef {object} ExecutorRuleMetrics
+ * @property {number} last_cycle_start
+ * @property {Map<string, { rule_status: object, bucket_status: object }>} parts
+ */
+
+/** @type {Map<string, ExecutorRuleMetrics>} */
+const executor_rule_metrics = new Map();
+
+/**
+ * @typedef {object} ExecutorReplicationMetrics
+ * @property {string} replication_id
+ * @property {string} rule_id
+ * @property {string | { unwrap: () => string }} bucket_name
+ * @property {string} report_id
+ * @property {number} last_cycle_start
+ * @property {object} rule_status
+ * @property {object} bucket_status
+ */
+
+/**
+ * Send one finished chunk to the default background process.
+ * That process owns the core report and adds this report into the rule sum.
+ * @param {{ replication: { update_replication_metrics: (params: object, options: object) => Promise<void> } }} client
+ * @param {ExecutorReplicationMetrics} entry
+ * @returns {Promise<void>}
+ */
+async function send_replication_metrics(client, entry) {
+    if (!client || !client.replication || typeof client.replication.update_replication_metrics !== 'function') {
+        throw new Error('replication metrics rpc is not configured');
+    }
+    const bucket_name = entry.bucket_name && typeof entry.bucket_name.unwrap === 'function' ?
+        entry.bucket_name.unwrap() : entry.bucket_name;
+    await client.replication.update_replication_metrics({
+        replication_id: String(entry.replication_id),
+        rule_id: String(entry.rule_id),
+        bucket_name: String(bucket_name),
+        report_id: String(entry.report_id || ''),
+        last_cycle_start: Number(entry.last_cycle_start) || 0,
+        rule_status: entry.rule_status,
+        bucket_status: entry.bucket_status,
+    }, {
+        auth_token: auth_server.make_auth_token({
+            system_id: system_store.data.systems[0]._id,
+            account_id: system_store.data.systems[0].owner._id,
+            role: 'admin'
+        })
+    });
+}
+
+/**
+ * Add one executor report to its rule and publish the sum.
+ * A new last_cycle_start starts a new sum. The same report_id replaces the previous report.
+ * @param {ExecutorReplicationMetrics} entry
+ * @returns {void}
+ */
+function add_executor_replication_metrics(entry) {
+    const replication_id = String(entry.replication_id || '');
+    const rule_id = String(entry.rule_id || '');
+    const report_id = String(entry.report_id || '');
+    if (!replication_id || !rule_id || !report_id) {
+        throw new Error('replication metrics report is missing its id');
+    }
+    const cycle = Number(entry.last_cycle_start) || 0;
+    const id = `${replication_id}\0${rule_id}`;
+    let rule = executor_rule_metrics.get(id);
+    if (!rule || rule.last_cycle_start !== cycle) {
+        if (!executor_rule_metrics.has(id) && executor_rule_metrics.size >= EXECUTOR_RULE_METRICS_LIMIT) {
+            const oldest = executor_rule_metrics.keys().next().value;
+            if (oldest !== undefined) executor_rule_metrics.delete(oldest);
+        }
+        rule = { last_cycle_start: cycle, parts: new Map() };
+        executor_rule_metrics.set(id, rule);
+    }
+    rule.parts.set(report_id, {
+        rule_status: entry.rule_status || {},
+        bucket_status: entry.bucket_status || {},
+    });
+    const summed = sum_executor_rule_metrics(rule_id, rule.parts, entry.rule_status);
+    const bucket_name = entry.bucket_name && typeof entry.bucket_name.unwrap === 'function' ?
+        entry.bucket_name.unwrap() : entry.bucket_name;
+    // Through exports so a test can replace the reporter without loading prometheus.
+    exports.update_replication_prom_report(bucket_name, replication_id, summed.rule_status, summed.bucket_status);
+}
+
+/**
+ * @param {string} rule_id
+ * @param {Map<string, { rule_status: object, bucket_status: object }>} parts
+ * @param {object} latest_rule_status
+ * @returns {{ rule_status: object, bucket_status: object }}
+ */
+function sum_executor_rule_metrics(rule_id, parts, latest_rule_status) {
+    /** @type {Record<string, number>} */
+    const rule_counts = {};
+    /** @type {Record<string, number>} */
+    const bucket_status = {};
+    for (const field of RULE_METRIC_FIELDS) rule_counts[field] = 0;
+    for (const field of BUCKET_METRIC_FIELDS) bucket_status[field] = 0;
+    for (const part of parts.values()) {
+        for (const field of RULE_METRIC_FIELDS) {
+            rule_counts[field] += metric_number(part.rule_status, field);
+        }
+        for (const field of BUCKET_METRIC_FIELDS) {
+            bucket_status[field] += metric_number(part.bucket_status, field);
+        }
+    }
+    const rule_status = {
+        last_cycle_rule_id: rule_id,
+        ...rule_counts,
+    };
+    if (latest_rule_status && latest_rule_status.last_cycle_src_cont_token) {
+        rule_status.last_cycle_src_cont_token = latest_rule_status.last_cycle_src_cont_token;
+    }
+    return { rule_status, bucket_status };
+}
+
+/**
+ * @param {object} status
+ * @param {string} field
+ * @returns {number}
+ */
+function metric_number(status, field) {
+    const value = Number(status && status[field]);
+    return Number.isFinite(value) ? value : 0;
+}
+
 // EXPORTS
+exports.REPLICATION_TASK_TYPE = REPLICATION_TASK_TYPE;
 exports.get_rule_and_bucket_status = get_rule_and_bucket_status;
 exports.update_replication_prom_report = update_replication_prom_report;
 exports.report_failed_replication_cycle = report_failed_replication_cycle;
@@ -371,6 +579,11 @@ exports.resolve_destination_bucket_name = resolve_destination_bucket_name;
 exports.get_object_md = get_object_md;
 exports.find_src_and_dst_buckets = find_src_and_dst_buckets;
 exports.get_copy_type = get_copy_type;
+exports.enqueue_replication_task = enqueue_replication_task;
+exports.replication_id_string = replication_id_string;
+exports.load_replication_task_buckets = load_replication_task_buckets;
+exports.send_replication_metrics = send_replication_metrics;
+exports.add_executor_replication_metrics = add_executor_replication_metrics;
 exports.copy_objects = copy_objects;
 exports.delete_objects = delete_objects;
 exports._denormalize_log_replication_info = _denormalize_log_replication_info;

@@ -104,16 +104,19 @@ class PostgresMessageQueue {
 
     /**
      * enqueue inserts a new message into the queue with capacity check.
+     * task_type is required and stored on the message. The payload stays the task body.
      * @param {string} queue
      * @param {object} payload
+     * @param {string} task_type
      * @returns {Promise<string>}
      */
-    async enqueue(queue, payload) {
+    async enqueue(queue, payload, task_type) {
         const table = this._table(queue);
         const body = normalize_payload(payload);
+        const message_task_type = normalize_task_type(task_type);
         const _id = db_client.instance().new_object_id();
         const now = new Date();
-        const message = { _id, payload: body, enqueued_at: now };
+        const message = { _id, task_type: message_task_type, payload: body, enqueued_at: now };
         const capacity_condition = { dead_at: null };
         await table.insertOne(message, capacity_condition);
         return String(_id);
@@ -170,6 +173,7 @@ class PostgresMessageQueue {
         return {
             _id: String(row._id).trim(),
             queue,
+            task_type: data.task_type,
             payload: data.payload,
             retry_count: Number(data.retry_count),
             lock_token: token,
@@ -400,6 +404,18 @@ function validate_queue_name(queue) {
     if (typeof queue !== 'string' || !QUEUE_NAME_PATTERN.test(queue)) {
         throw new Error(`invalid message queue name - ${queue}, use lowercase letters, digits, or underscores, and start with a letter or underscore`);
     }
+}
+
+/**
+ * Validate the required message task type.
+ * @param {string} task_type
+ * @returns {string}
+ */
+function normalize_task_type(task_type) {
+    if (typeof task_type !== 'string' || !task_type) {
+        throw new Error(`message queue task_type must be a non-empty string - ${task_type}`);
+    }
+    return task_type;
 }
 
 /**

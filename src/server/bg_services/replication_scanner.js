@@ -12,6 +12,7 @@ const replication_store = require('../system_services/replication_store').instan
 const cloud_utils = require('../../util/cloud_utils');
 const replication_utils = require('../utils/replication_utils');
 const { BucketDiff } = require('../../server/utils/bucket_diff');
+const { BG_WORKERS_MODES, get_bg_workers_mode } = require('./bg_workers_utils');
 
 class ReplicationScanner {
 
@@ -19,11 +20,13 @@ class ReplicationScanner {
      * @param {{
      *   name: string;
      *   client: nb.APIClient;
+     *   mq_client?: nb.MessageQueueClient | null;
      * }} params
      */
-    constructor({ name, client }) {
+    constructor({ name, client, mq_client = null }) {
         this.name = name;
         this.client = client;
+        this.mq_client = mq_client;
         this.scanner_semaphore = new semaphore.Semaphore(config.REPLICATION_SEMAPHORE_CAP, {
             timeout: config.REPLICATION_SEMAPHORE_TIMEOUT,
             timeout_error_code: 'REPLICATION_ITEM_TIMEOUT',
@@ -40,7 +43,7 @@ class ReplicationScanner {
                 this.noobaa_connection = cloud_utils.set_noobaa_s3_connection(system_store.data.systems[0]);
             }
             const { had_work, had_errors } = await this.scan();
-            // Retry soon when this batch copied objects or a rule failed. An idle batch waits the full delay.
+            // Retry soon when this batch queued copies or a rule failed. An idle batch waits the full delay.
             return (had_work || had_errors) ? config.BUCKET_REPLICATOR_BUSY_DELAY : config.BUCKET_REPLICATOR_DELAY;
         } catch (err) {
             dbg.error('replication_scanner:', err, err.stack);
@@ -88,8 +91,8 @@ class ReplicationScanner {
     }
 
     /**
-     * scan_rule diffs one rule and executes the copy.
-     * @param {{ replication_id: string, rule: { rule_id: string } }} replication_id_and_rule
+     * scan_rule diffs one rule and enqueues the copy.
+     * @param {{ replication_id: string, rule: { rule_id: string, destination_bucket: * } }} replication_id_and_rule
      * @param {{ had_work: boolean, had_errors: boolean }} result
      */
     async scan_rule(replication_id_and_rule, result) {
@@ -105,13 +108,37 @@ class ReplicationScanner {
 
         dbg.log1('scan_rule:: keys_sizes_map_to_copy:', keys_diff_map, 'src_cont_token:', src_cont_token, 'dst_cont_token', dst_cont_token);
 
-        // TODO: instead of calling execute, we should insert to the queue and process it in the background by the consumers
-        const had_copy_errors = await this.execute(
-            src_bucket, dst_bucket, keys_diff_map, replication_id, rule.rule_id, status,
-            { src_cont_token, dst_cont_token });
-        if (had_copy_errors) result.had_errors = true;
+        // MESSAGE_QUEUE_TYPE=none stores nothing, so keep copying in this process.
+        // The scan cursor is stored here, after the copy. _execute does not write it.
+        if (config.MESSAGE_QUEUE_TYPE === 'none') {
+            const { had_copy_errors } = await this._execute(
+                src_bucket, dst_bucket, keys_diff_map, replication_id, rule.rule_id, status,
+                { src_cont_token });
+            if (had_copy_errors) result.had_errors = true;
+            await commit_scan_cursor(replication_id, rule.rule_id, status, { src_cont_token, dst_cont_token });
+        } else {
+            // The queue worker dequeues this task and calls execute.
+            // Only a page with a diff produces work; an empty diff just advances the cursor.
+            // Store the cursor once, after every chunk is queued, so the next scan reads the next page
+            // while these copies are still queued.
+            if (Object.keys(keys_diff_map).length) {
+                const chunks = chunk_keys_diff_map(keys_diff_map, config.REPLICATION_QUEUE_OBJECTS_PER_MESSAGE);
+                dbg.log1('scan_rule:: enqueue', chunks.length, 'messages for', Object.keys(keys_diff_map).length, 'keys');
+                for (const chunk of chunks) {
+                    await replication_utils.enqueue_replication_task(this.mq_client, replication_utils.REPLICATION_TASK_TYPE.SCAN, {
+                        replication_id: replication_utils.replication_id_string(replication_id),
+                        rule_id: rule.rule_id,
+                        destination_bucket_id: replication_utils.replication_id_string(rule.destination_bucket),
+                        keys_diff_map: chunk,
+                        status,
+                        src_cont_token,
+                    });
+                }
+            }
+            await commit_scan_cursor(replication_id, rule.rule_id, status, { src_cont_token, dst_cont_token });
+        }
 
-        // This rule copied objects or has more pages to scan.
+        // This rule has objects to copy or more pages to scan.
         if (Object.keys(keys_diff_map).length || src_cont_token) result.had_work = true;
     }
 
@@ -203,18 +230,47 @@ class ReplicationScanner {
     }
 
     /**
-     * execute copies one rule's diff, then stores the scan cursor and metrics.
+     * execute runs one dequeued scan message. This is the bg worker entry the executor calls after it
+     * routed the message here by task_type; the scanner only handles scan work and knows nothing of other types.
+     * The scanner already stored the cursor. A copy failure throws so the queue nacks and retries the same payload.
+     * report_id is the queue message id. A retry of that message reuses the same id.
+     * @param {nb.QueueMessage} message
+     * @returns {Promise<void>}
+     * @throws {Error} when the payload is missing, the buckets are gone, or a copy failed
+     */
+    async execute(message) {
+        const payload = /** @type {ScanReplicateTask} */ (message && message.payload);
+        if (!payload || typeof payload !== 'object') throw new Error('task payload is missing');
+
+        const { src_bucket, dst_bucket } = replication_utils.load_replication_task_buckets(payload);
+        const { had_copy_errors } = await this._execute(
+            src_bucket,
+            dst_bucket,
+            payload.keys_diff_map || {},
+            payload.replication_id,
+            payload.rule_id,
+            payload.status || { last_cycle_start: Date.now() },
+            { src_cont_token: payload.src_cont_token || '', report_id: message._id },
+        );
+        if (had_copy_errors) throw new Error(`replicate task copy failed for rule ${payload.rule_id}`);
+    }
+
+    /**
+     * _execute copies one rule's diff.
+     * scan_rule stores the scan cursor.
+     * An executor sends this chunk to the default background process, which sums it into the rule.
+     * An inline run updates the local gauges from the diff this call copied.
      * @param {{ name: nb.SensitiveString }} src_bucket
      * @param {{ name: nb.SensitiveString }} dst_bucket
      * @param {nb.BucketDiffKeysDiff | {}} keys_diff_map
      * @param {string} replication_id
      * @param {string} rule_id
      * @param {{ last_cycle_start: number }} status
-     * @param {{ src_cont_token: string, dst_cont_token: string }} cont_tokens
-     * @returns {Promise<boolean>} true when at least one object in the diff was not copied
+     * @param {{ src_cont_token: string, report_id?: string }} cont_tokens
+     * @returns {Promise<{ had_copy_errors: boolean }>} had_copy_errors is true when at least one object in the diff was not copied
      */
-    async execute(src_bucket, dst_bucket, keys_diff_map, replication_id, rule_id, status, cont_tokens) {
-        const { src_cont_token, dst_cont_token } = cont_tokens;
+    async _execute(src_bucket, dst_bucket, keys_diff_map, replication_id, rule_id, status, cont_tokens) {
+        const { src_cont_token, report_id } = cont_tokens;
 
         let copy_res = { num_of_objects: 0, size_of_objects: 0 };
         let had_copy_errors = false;
@@ -229,19 +285,81 @@ class ReplicationScanner {
             replication_utils.update_replication_target_status(replication_id, src_bucket.name, dst_bucket.name, true);
         }
 
-        // always advance the src cont token, if failures happened - they will eventually will be copied
-        const new_status = { ...status, last_cycle_end: Date.now(), src_cont_token, dst_cont_token };
-        await replication_store.update_replication_status_by_id(replication_id, rule_id, new_status);
-
         // update the prometheus metrics only if we have diff
         if (Object.keys(keys_diff_map).length) {
             const {rule_status, bucket_status} = replication_utils.get_rule_and_bucket_status(
                 rule_id, src_cont_token, keys_diff_map, copy_res);
-            replication_utils.update_replication_prom_report(src_bucket.name, replication_id, rule_status, bucket_status);
+            if (get_bg_workers_mode() === BG_WORKERS_MODES.EXECUTOR) {
+                // The copy already happened. A failed metrics report self-heals next cycle,
+                // so do not nack the message and re-copy the chunk over a metrics hiccup.
+                try {
+                    await replication_utils.send_replication_metrics(this.client, {
+                        replication_id,
+                        rule_id,
+                        bucket_name: src_bucket.name,
+                        report_id,
+                        last_cycle_start: status && status.last_cycle_start,
+                        rule_status,
+                        bucket_status,
+                    });
+                } catch (err) {
+                    dbg.error('replication_scanner: failed to send replication metrics for rule', rule_id, err);
+                }
+            } else {
+                replication_utils.update_replication_prom_report(src_bucket.name, replication_id, rule_status, bucket_status);
+            }
             had_copy_errors = rule_status.last_cycle_error_writes_num > 0;
         }
-        return had_copy_errors;
+        return { had_copy_errors };
     }
 }
 
 exports.ReplicationScanner = ReplicationScanner;
+
+/**
+ * @param {string} replication_id
+ * @param {string} rule_id
+ * @param {{ last_cycle_start: number }} status
+ * @param {{ src_cont_token: string, dst_cont_token: string }} cont_tokens
+ * @returns {Promise<void>}
+ */
+async function commit_scan_cursor(replication_id, rule_id, status, cont_tokens) {
+    const { src_cont_token, dst_cont_token } = cont_tokens;
+    // Advance to the next page. A failed copy is not scanned again from these tokens.
+    const new_status = { ...status, last_cycle_end: Date.now(), src_cont_token, dst_cont_token };
+    await replication_store.update_replication_status_by_id(replication_id, rule_id, new_status);
+}
+
+/**
+ * @typedef {object} ScanReplicateTask
+ * @property {string} replication_id
+ * @property {string} rule_id
+ * @property {string} destination_bucket_id
+ * @property {nb.BucketDiffKeysDiff | {}} keys_diff_map
+ * @property {{ last_cycle_start: number }} status
+ * @property {string} src_cont_token
+ */
+
+/**
+ * Split one scan diff into queue messages. The chunk size counts keys.
+ * Versions of a key stay in the same message.
+ * A non-positive chunk size keeps the page in one message.
+ * @param {nb.BucketDiffKeysDiff | {}} keys_diff_map
+ * @param {number} chunk_size
+ * @returns {Array<nb.BucketDiffKeysDiff | {}>}
+ */
+function chunk_keys_diff_map(keys_diff_map, chunk_size) {
+    const keys = Object.keys(keys_diff_map);
+    if (!keys.length || !(chunk_size > 0) || keys.length <= chunk_size) return [keys_diff_map];
+    /** @type {Array<nb.BucketDiffKeysDiff | {}>} */
+    const chunks = [];
+    for (let offset = 0; offset < keys.length; offset += chunk_size) {
+        /** @type {nb.BucketDiffKeysDiff} */
+        const chunk = {};
+        for (const key of keys.slice(offset, offset + chunk_size)) {
+            chunk[key] = keys_diff_map[key];
+        }
+        chunks.push(chunk);
+    }
+    return chunks;
+}
