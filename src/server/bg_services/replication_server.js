@@ -5,6 +5,7 @@ const dbg = require('../../util/debug_module')(__filename);
 const system_store = require('../system_services/system_store').get_instance();
 const P = require('../../util/promise');
 const cloud_utils = require('../../util/cloud_utils');
+const replication_utils = require('../utils/replication_utils');
 
 async function copy_objects(req) {
     const { copy_type } = req.rpc_params;
@@ -130,6 +131,25 @@ async function _move_objects_azure(src_bucket, dst_bucket, objects_list) {
 }*/
 
 
+/**
+ * Add one executor report to the rule sum and publish that sum on the core report.
+ * Only the default background process serves this method. That process owns the report.
+ * @param {{ rpc_params: {
+ *   replication_id: string,
+ *   rule_id: string,
+ *   bucket_name: string,
+ *   report_id: string,
+ *   last_cycle_start: number,
+ *   rule_status: object,
+ *   bucket_status: object,
+ * }}} req
+ * @returns {void}
+ */
+function update_replication_metrics(req) {
+    replication_utils.add_executor_replication_metrics(req.rpc_params);
+}
+
 exports.copy_objects = copy_objects;
 exports.copy_objects_mixed_types = copy_objects_mixed_types;
 exports.delete_objects = delete_objects;
+exports.update_replication_metrics = update_replication_metrics;

@@ -12,6 +12,7 @@ const replication_store = require('../system_services/replication_store').instan
 const cloud_utils = require('../../util/cloud_utils');
 const replication_utils = require('../utils/replication_utils');
 const { BucketDiff } = require('../../server/utils/bucket_diff');
+const { BG_WORKERS_MODES, get_bg_workers_mode } = require('./bg_workers_utils');
 
 class ReplicationScanner {
 
@@ -210,11 +211,11 @@ class ReplicationScanner {
      * @param {string} replication_id
      * @param {string} rule_id
      * @param {{ last_cycle_start: number }} status
-     * @param {{ src_cont_token: string, dst_cont_token: string }} cont_tokens
+     * @param {{ src_cont_token: string, dst_cont_token: string, report_id?: string }} cont_tokens
      * @returns {Promise<boolean>} true when at least one object in the diff was not copied
      */
     async execute(src_bucket, dst_bucket, keys_diff_map, replication_id, rule_id, status, cont_tokens) {
-        const { src_cont_token, dst_cont_token } = cont_tokens;
+        const { src_cont_token, dst_cont_token, report_id } = cont_tokens;
 
         let copy_res = { num_of_objects: 0, size_of_objects: 0 };
         let had_copy_errors = false;
@@ -237,7 +238,26 @@ class ReplicationScanner {
         if (Object.keys(keys_diff_map).length) {
             const {rule_status, bucket_status} = replication_utils.get_rule_and_bucket_status(
                 rule_id, src_cont_token, keys_diff_map, copy_res);
-            replication_utils.update_replication_prom_report(src_bucket.name, replication_id, rule_status, bucket_status);
+            if (get_bg_workers_mode() === BG_WORKERS_MODES.EXECUTOR) {
+                // An executor does not own the core report. Send this chunk's numbers to the default
+                // background process, which sums every executor's report for the rule and publishes it.
+                // A failed metrics report self-heals next cycle, so it must not fail the copy work.
+                try {
+                    await replication_utils.send_replication_metrics(this.client, {
+                        replication_id,
+                        rule_id,
+                        bucket_name: src_bucket.name,
+                        report_id,
+                        last_cycle_start: status && status.last_cycle_start,
+                        rule_status,
+                        bucket_status,
+                    });
+                } catch (err) {
+                    dbg.error('replication_scanner: failed to send replication metrics for rule', rule_id, err);
+                }
+            } else {
+                replication_utils.update_replication_prom_report(src_bucket.name, replication_id, rule_status, bucket_status);
+            }
             had_copy_errors = rule_status.last_cycle_error_writes_num > 0;
         }
         return had_copy_errors;

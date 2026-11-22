@@ -77,10 +77,11 @@ function get_rule_and_bucket_status(rule, src_cont_token, keys_diff_map, copy_re
 
 function update_replication_prom_report(bucket_name, replication_policy_id, rule_status, bucket_status) {
     const core_report = prom_reporting.get_core_report();
+    const name = bucket_name && typeof bucket_name.unwrap === 'function' ? bucket_name.unwrap() : bucket_name;
     const last_cycle_status = _.defaults({
         ...rule_status,
         ...bucket_status,
-        bucket_name: bucket_name.unwrap(),
+        bucket_name: name,
         replication_id: replication_policy_id
     }, PARTIAL_SINGLE_BUCKET_REPLICATION_DEFAULTS);
 
@@ -360,6 +361,162 @@ function _denormalize_log_replication_info(stored) {
     return undefined;
 }
 
+const EXECUTOR_RULE_METRICS_LIMIT = 1000;
+
+const RULE_METRIC_FIELDS = [
+    'last_cycle_writes_num',
+    'last_cycle_writes_size',
+    'last_cycle_error_writes_num',
+    'last_cycle_error_writes_size',
+];
+
+const BUCKET_METRIC_FIELDS = [
+    'bucket_last_cycle_total_objects_num',
+    'bucket_last_cycle_replicated_objects_num',
+    'bucket_last_cycle_error_objects_num',
+];
+
+/**
+ * Latest reports for one rule in the current scan cycle.
+ * parts is keyed by report_id so a retry replaces that executor's numbers.
+ * @typedef {object} ExecutorRuleMetrics
+ * @property {number} last_cycle_start
+ * @property {Map<string, { rule_status: object, bucket_status: object }>} parts
+ */
+
+/** @type {Map<string, ExecutorRuleMetrics>} */
+const executor_rule_metrics = new Map();
+
+/**
+ * @typedef {object} ExecutorReplicationMetrics
+ * @property {string} replication_id
+ * @property {string} rule_id
+ * @property {string | { unwrap: () => string }} bucket_name
+ * @property {string} report_id
+ * @property {number} last_cycle_start
+ * @property {object} rule_status
+ * @property {object} bucket_status
+ */
+
+/**
+ * Send one finished chunk to the default background process.
+ * That process owns the core report and adds this report into the rule sum.
+ * @param {{ replication: { update_replication_metrics: (params: object, options: object) => Promise<void> } }} client
+ * @param {ExecutorReplicationMetrics} entry
+ * @returns {Promise<void>}
+ */
+async function send_replication_metrics(client, entry) {
+    if (!client || !client.replication || typeof client.replication.update_replication_metrics !== 'function') {
+        throw new Error('replication metrics rpc is not configured');
+    }
+    const bucket_name = entry.bucket_name && typeof entry.bucket_name.unwrap === 'function' ?
+        entry.bucket_name.unwrap() : entry.bucket_name;
+    await client.replication.update_replication_metrics({
+        replication_id: String(entry.replication_id),
+        rule_id: String(entry.rule_id),
+        bucket_name: String(bucket_name),
+        report_id: String(entry.report_id || ''),
+        last_cycle_start: Number(entry.last_cycle_start) || 0,
+        rule_status: entry.rule_status,
+        bucket_status: entry.bucket_status,
+    }, {
+        auth_token: auth_server.make_auth_token({
+            system_id: system_store.data.systems[0]._id,
+            account_id: system_store.data.systems[0].owner._id,
+            role: 'admin'
+        })
+    });
+}
+
+/**
+ * Add one executor report to its rule and publish the sum.
+ * A new last_cycle_start starts a new sum. The same report_id replaces the previous report.
+ * This runs synchronously on the owner process, so concurrent RPC deliveries are applied
+ * one at a time and never lose an update - each report is folded into the sum atomically.
+ * @param {ExecutorReplicationMetrics} entry
+ * @returns {void}
+ */
+function add_executor_replication_metrics(entry) {
+    const replication_id = String(entry.replication_id || '');
+    const rule_id = String(entry.rule_id || '');
+    const report_id = String(entry.report_id || '');
+    if (!replication_id || !rule_id || !report_id) {
+        throw new Error('replication metrics report is missing its id');
+    }
+    const cycle = Number(entry.last_cycle_start) || 0;
+    const id = `${replication_id}\0${rule_id}`;
+    let rule = executor_rule_metrics.get(id);
+    // A late report from an older cycle must not reset or regress the current sum - drop it.
+    if (rule && cycle < rule.last_cycle_start) return;
+    // Only a strictly newer cycle starts a fresh sum; same-cycle reports accumulate.
+    if (!rule || cycle > rule.last_cycle_start) {
+        if (!executor_rule_metrics.has(id) && executor_rule_metrics.size >= EXECUTOR_RULE_METRICS_LIMIT) {
+            const oldest = executor_rule_metrics.keys().next().value;
+            if (oldest !== undefined) executor_rule_metrics.delete(oldest);
+        }
+        rule = { last_cycle_start: cycle, parts: new Map() };
+        executor_rule_metrics.set(id, rule);
+    }
+    rule.parts.set(report_id, {
+        rule_status: entry.rule_status || {},
+        bucket_status: entry.bucket_status || {},
+    });
+    const summed = sum_executor_rule_metrics(rule_id, rule.parts, entry.rule_status);
+    const bucket_name = entry.bucket_name && typeof entry.bucket_name.unwrap === 'function' ?
+        entry.bucket_name.unwrap() : entry.bucket_name;
+    // Through exports so a test can replace the reporter without loading prometheus.
+    exports.update_replication_prom_report(bucket_name, replication_id, summed.rule_status, summed.bucket_status);
+}
+
+/**
+ * @param {string} rule_id
+ * @param {Map<string, { rule_status: object, bucket_status: object }>} parts
+ * @param {object} latest_rule_status
+ * @returns {{ rule_status: object, bucket_status: object }}
+ */
+function sum_executor_rule_metrics(rule_id, parts, latest_rule_status) {
+    /** @type {Record<string, number>} */
+    const rule_counts = {};
+    /** @type {Record<string, number>} */
+    const bucket_status = {};
+    for (const field of RULE_METRIC_FIELDS) rule_counts[field] = 0;
+    for (const field of BUCKET_METRIC_FIELDS) bucket_status[field] = 0;
+    for (const part of parts.values()) {
+        for (const field of RULE_METRIC_FIELDS) {
+            rule_counts[field] += metric_number(part.rule_status, field);
+        }
+        for (const field of BUCKET_METRIC_FIELDS) {
+            bucket_status[field] += metric_number(part.bucket_status, field);
+        }
+    }
+    const rule_status = {
+        last_cycle_rule_id: rule_id,
+        ...rule_counts,
+    };
+    if (latest_rule_status && latest_rule_status.last_cycle_src_cont_token) {
+        rule_status.last_cycle_src_cont_token = latest_rule_status.last_cycle_src_cont_token;
+    }
+    return { rule_status, bucket_status };
+}
+
+/**
+ * @param {object} status
+ * @param {string} field
+ * @returns {number}
+ */
+function metric_number(status, field) {
+    const value = Number(status && status[field]);
+    return Number.isFinite(value) ? value : 0;
+}
+
+/**
+ * Reset the in-memory executor metrics accumulator. Test-only helper.
+ * @returns {void}
+ */
+function _reset_executor_replication_metrics() {
+    executor_rule_metrics.clear();
+}
+
 // EXPORTS
 exports.get_rule_and_bucket_status = get_rule_and_bucket_status;
 exports.update_replication_prom_report = update_replication_prom_report;
@@ -371,6 +528,9 @@ exports.resolve_destination_bucket_name = resolve_destination_bucket_name;
 exports.get_object_md = get_object_md;
 exports.find_src_and_dst_buckets = find_src_and_dst_buckets;
 exports.get_copy_type = get_copy_type;
+exports.send_replication_metrics = send_replication_metrics;
+exports.add_executor_replication_metrics = add_executor_replication_metrics;
+exports._reset_executor_replication_metrics = _reset_executor_replication_metrics;
 exports.copy_objects = copy_objects;
 exports.delete_objects = delete_objects;
 exports._denormalize_log_replication_info = _denormalize_log_replication_info;

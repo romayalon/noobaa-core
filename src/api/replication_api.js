@@ -53,6 +53,50 @@ module.exports = {
                 system: 'admin'
             }
         },
+        update_replication_metrics: {
+            method: 'POST',
+            params: {
+                type: 'object',
+                required: [
+                    'replication_id',
+                    'rule_id',
+                    'bucket_name',
+                    'report_id',
+                    'last_cycle_start',
+                    'rule_status',
+                    'bucket_status',
+                ],
+                properties: {
+                    replication_id: { type: 'string' },
+                    rule_id: { type: 'string' },
+                    bucket_name: { type: 'string' },
+                    report_id: { type: 'string' },
+                    last_cycle_start: { type: 'number' },
+                    rule_status: {
+                        type: 'object',
+                        properties: {
+                            last_cycle_rule_id: { type: 'string' },
+                            last_cycle_writes_num: { type: 'number' },
+                            last_cycle_writes_size: { type: 'number' },
+                            last_cycle_error_writes_num: { type: 'number' },
+                            last_cycle_error_writes_size: { type: 'number' },
+                            last_cycle_src_cont_token: { type: 'string' },
+                        },
+                    },
+                    bucket_status: {
+                        type: 'object',
+                        properties: {
+                            bucket_last_cycle_total_objects_num: { type: 'number' },
+                            bucket_last_cycle_replicated_objects_num: { type: 'number' },
+                            bucket_last_cycle_error_objects_num: { type: 'number' },
+                        },
+                    },
+                },
+            },
+            auth: {
+                system: 'admin'
+            }
+        },
         delete_objects: {
             method: 'POST',
             params: {
